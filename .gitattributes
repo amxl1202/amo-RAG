@@ -1,0 +1,18 @@
+# 仓库内一律以 LF 存储,工作区也检出 LF。
+# 原因:本机 core.autocrlf=true,若不显式约定,scripts/*.sh 检出后会带 CRLF,
+# 在 Git Bash 下直接执行会报 "\r: command not found"。
+* text=auto eol=lf
+
+# Windows 批处理必须 CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制文件不做换行符转换
+*.jar   binary
+*.zip   binary
+*.pdf   binary
+*.docx  binary
+*.xlsx  binary
+*.png   binary
+*.jpg   binary
+*.woff2 binary
