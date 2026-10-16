@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: ragkb-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/rag_kb}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:rag123456}
+  sql:
+    init:
+      # 建表语句全部用 IF NOT EXISTS,重复执行无害
+      mode: always
+      schema-locations: classpath:schema.sql
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    com.ragkb: INFO
+
+app:
+  storage:
+    root: ${STORAGE_ROOT:./data/files}
+  upload:
+    max-size-mb: 50
