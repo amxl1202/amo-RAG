@@ -66,6 +66,22 @@ class BinaryParserStructureTest {
     }
 
     @Test
+    @DisplayName("PDF:顶满右边界的行为段落中间时,不能因为以句末标点结尾就断开")
+    void pdfDoesNotSplitAtMidParagraphPeriod() throws IOException {
+        List<RawBlock> blocks = pdfParser.parse(new ByteArrayInputStream(buildPdfWithMidParagraphPeriod()));
+
+        List<RawBlock> paragraphs = blocks.stream()
+                .filter(block -> block.kind() == BlockKind.PARAGRAPH)
+                .toList();
+
+        // 回归用例:第一版把"以。或.结尾"当成独立判据,真实中文 PDF 里段内换行
+        // 经常恰好断在句号后,结果一整段被劈成两块。现在只有"没写满"才算段落结束。
+        assertThat(paragraphs).hasSize(1);
+        assertThat(paragraphs.get(0).text().lines()).hasSize(3);
+        assertThat(paragraphs.get(0).text().lines().toList().get(0)).endsWith(".");
+    }
+
+    @Test
     @DisplayName("DOCX:大纲级别与标题样式都能识别出层级")
     void docxDetectsHeadingLevel() throws IOException {
         byte[] docx = buildDocx();
@@ -151,6 +167,34 @@ class BinaryParserStructureTest {
             sb.append(" x");
         }
         return sb.substring(0, 74);
+    }
+
+    /** 造一份正文段落中段内换行以句号结尾的 PDF:整段应当合并,不能被劈成两块。 */
+    private byte[] buildPdfWithMidParagraphPeriod() throws IOException {
+        String line1 = fullWidthLine("First visual line of one paragraph that happens to end").substring(0, 73) + ".";
+        String line2 = fullWidthLine("Second visual line of the very same paragraph ending here");
+        String line3 = "Short closing line.";
+
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            document.addPage(page);
+
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.beginText();
+                content.setFont(PDType1Font.COURIER, 11);
+                content.newLineAtOffset(50, 700);
+                content.showText(line1);
+                content.newLineAtOffset(0, -16);
+                content.showText(line2);
+                content.newLineAtOffset(0, -16);
+                content.showText(line3);
+                content.endText();
+            }
+
+            document.save(out);
+            return out.toByteArray();
+        }
     }
 
     /** 造一份 DOCX:Heading1 标题 + 正文段 + 带编号的列表项 + 2x2 表格。 */

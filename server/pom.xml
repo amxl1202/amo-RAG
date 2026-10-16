@@ -122,6 +122,13 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <!--
+                      把运行期工作目录固定为项目根。app.storage.root 的默认值 ./data/files
+                      是相对路径,若不指定,mvn spring-boot:run 会以 server/ 为 CWD,
+                      文件落到 server/data/files;而用 java -jar 从项目根启动又落到 ./data/files。
+                      同一条数据出现两个可能位置,日后对账必然出错。
+                    -->
+                    <workingDirectory>${project.basedir}/..</workingDirectory>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

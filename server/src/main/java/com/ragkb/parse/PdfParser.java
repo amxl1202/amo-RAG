@@ -130,18 +130,24 @@ public class PdfParser implements DocumentParser {
         return NUMBERED_HEADING.matcher(text.strip()).matches() ? 3 : 0;
     }
 
+    /**
+     * 行右端是否已经"写满"来决定段落是否在此结束。
+     *
+     * 这里刻意<b>不</b>把"以句末标点结尾"当成独立判据 —— 第一版就是这么写的,
+     * 在真实中文 PDF 上立刻出错:段内换行经常恰好断在"。"之后(一句话跨越两行),
+     * 于是整段被从中间劈开,每个视觉行都变成了独立段落。
+     * 现在标点只用来给"边界情况"加权:明显写不满 → 必结束;写不太满且有句末标点 → 结束;
+     * 顶满右边界 → 无论以什么标点结尾,都说明这段话还没完。
+     */
     private boolean endsParagraph(PdfLine line, double rightEdge) {
         if (rightEdge <= 0) {
             return true;
         }
-        String text = line.text();
-        if (SENTENCE_END.matcher(text).matches()) {
+        double ratio = line.rightEdge() / rightEdge;
+        if (ratio < PARAGRAPH_END_RATIO_STRICT) {
             return true;
         }
-        double ratio = line.rightEdge() / rightEdge;
-        // 明显没写满 → 段落结束;写满但以句末标点收尾 → 也结束
-        return ratio < PARAGRAPH_END_RATIO_STRICT
-                || (ratio < PARAGRAPH_END_RATIO && !text.endsWith("、") && !text.endsWith(","));
+        return ratio < PARAGRAPH_END_RATIO && SENTENCE_END.matcher(line.text()).matches();
     }
 
     /** 用"字符数加权"求字号众数,比取平均值稳:页面里少量大标题不会把基准带偏。 */
