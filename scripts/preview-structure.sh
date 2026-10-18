@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# 结构预览:不启动 Spring、不连数据库,直接打印一个文件解析后的结构块与 token 统计。
+# 结构预览:不启动 Spring、不连数据库,直接打印一个文件的解析结果。
 #
-# 用途:切片参数(target / max / overlap)必须由语料实测决定,
-# 这个脚本给出决定这三个数字所需的数据 —— 标题层级分布、段落 token 分位、最长表格行。
+# 两种用法,分别对应两件事:
+#   1) 定参数 —— 打印结构块与 token 分布(标题层级、段落分位、最长表格行),
+#      切片参数 target / max / overlap 要根据这份数据决定;
+#   2) 验收切片 —— 加 --chunks 调用切片器,把每一片打出来,
+#      并自动校验"下标能否取回原文"与"index 是否连续"。
 #
 # 用法:
 #   scripts/preview-structure.sh samples/rag-notes.pdf
-#   scripts/preview-structure.sh samples/*.pdf
+#   scripts/preview-structure.sh --chunks samples/rag-notes.pdf
+#   scripts/preview-structure.sh --chunks --splitter=<全限定类名> <文件>
 set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +19,7 @@ SERVER="$ROOT/server"
 . "$ROOT/scripts/jdk21.sh"
 
 if [ "$#" -eq 0 ]; then
-  echo "用法: scripts/preview-structure.sh <文件...>" >&2
+  echo "用法: scripts/preview-structure.sh [--chunks] [--splitter=<类名>] <文件...>" >&2
   exit 2
 fi
 
