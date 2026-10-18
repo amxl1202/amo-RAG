@@ -15,8 +15,8 @@ set -e
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SERVER="$ROOT/server"
-# shellcheck source=scripts/jdk21.sh
-. "$ROOT/scripts/jdk21.sh"
+# shellcheck source=scripts/jdk25.sh
+. "$ROOT/scripts/jdk25.sh"
 
 if [ "$#" -eq 0 ]; then
   echo "用法: scripts/preview-structure.sh [--chunks] [--splitter=<类名>] <文件...>" >&2
@@ -29,7 +29,7 @@ fi
 # java.exe 是原生 Windows 程序,认不了 Git Bash 的 /d/... 形式路径,这里转成 D:\...
 SERVER_WIN="$(cygpath -w "$SERVER" 2>/dev/null || echo "$SERVER")"
 
-exec "$JDK21/bin/java" \
+exec "$JDK25/bin/java" \
   -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 \
   -cp "$SERVER_WIN\\target\\classes;$(cat "$SERVER/target/classpath.txt")" \
   com.ragkb.preview.StructurePreview "$@"

@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.6</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -18,9 +18,9 @@
     <description>RAG knowledge base QA service</description>
 
     <properties>
-        <java.version>21</java.version>
-        <maven.compiler.release>21</maven.compiler.release>
-        <mybatis-plus.version>3.5.12</mybatis-plus.version>
+        <java.version>25</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <mybatis-plus.version>3.5.17</mybatis-plus.version>
         <pdfbox.version>2.0.32</pdfbox.version>
         <poi.version>5.2.5</poi.version>
         <jjwt.version>0.12.6</jjwt.version>
@@ -44,7 +44,7 @@
 
         <dependency>
             <groupId>com.baomidou</groupId>
-            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
             <version>${mybatis-plus.version}</version>
         </dependency>
         <dependency>
@@ -118,6 +118,18 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!--
+                      必须显式开启注解处理。从 JDK 23 起 javac 默认不再自动发现注解处理器,
+                      不写这一行 Lombok 完全不生效,报错是几十个「找不到符号: 变量 log」
+                      「无法推断泛型参数」—— 看起来像框架不兼容,实际是注解处理器没跑。
+                    -->
+                    <proc>full</proc>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
