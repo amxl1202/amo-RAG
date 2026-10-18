@@ -84,7 +84,7 @@
             <version>${jtokkit.version}</version>
         </dependency>
 
-        <!-- 认证(板块⑥,先引入避免后续动 pom) -->
+        <!-- 认证:先把依赖引入,避免后续为加认证再改一次 pom -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>

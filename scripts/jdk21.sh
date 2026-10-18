@@ -3,7 +3,7 @@
 #
 # 为什么不直接用系统的 JAVA_HOME:它指向 IntelliJ 自带的 JBR 25。
 # 那是 IDE 的运行时,不是工程的构建/运行 JDK。用它编译虽然靠 --release 21 也能过,
-# 但"项目跑在 Java 21 上"就变成一句没验证过的话,面试追问时站不住。
+# 但「项目跑在 Java 21 上」就变成一句没验证过的话。
 #
 # 覆盖方式:JDK21_HOME='D:\path\to\jdk-21' source scripts/jdk21.sh
 

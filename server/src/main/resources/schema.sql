@@ -1,4 +1,4 @@
--- 板块① 文档元数据表
+-- 文档元数据表
 -- sha256 唯一索引是并发去重的最终兜底:两个请求同时通过"查重-插入"间隙时,靠它保证只有一个成功
 CREATE TABLE IF NOT EXISTS documents (
     id            BIGSERIAL PRIMARY KEY,
@@ -15,15 +15,15 @@ CREATE TABLE IF NOT EXISTS documents (
     CONSTRAINT uk_documents_sha256 UNIQUE (sha256)
 );
 
--- 板块④ 关键词通道会用到 PG 全文检索,列提前留好(tsvector 由解析后回填)
+-- 关键词检索通道会用到 PG 全文检索,列提前留好(tsvector 由解析后回填)
 ALTER TABLE documents
     ADD COLUMN IF NOT EXISTS fts tsvector;
 
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents (status);
 
--- 板块② 切片表
+-- 切片表
 -- 不放向量列:维度随 embedding 模型变,切片策略却相对稳定,混在一张表里
--- 会让"换模型"变成"改切片表结构 + 重刷全表"。向量另表存放(板块③)。
+-- 会让"换模型"变成"改切片表结构 + 重刷全表"。向量另表存放。
 CREATE TABLE IF NOT EXISTS document_chunks (
     id            BIGSERIAL PRIMARY KEY,
     document_id   BIGINT       NOT NULL REFERENCES documents (id) ON DELETE CASCADE,

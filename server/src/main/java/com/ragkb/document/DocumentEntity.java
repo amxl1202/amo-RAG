@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 
 /**
  * 文档元数据。status 表示入库后所处的流水线阶段,
- * 后续板块(解析→切片→向量化)推进状态机,失败停在 FAILED 并记录原因。
+ * 后续阶段(解析→切片→向量化)推进状态机,失败停在 FAILED 并记录原因。
  */
 @Data
 @TableName("documents")

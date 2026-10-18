@@ -5,7 +5,7 @@
 # 这个脚本给出决定这三个数字所需的数据 —— 标题层级分布、段落 token 分位、最长表格行。
 #
 # 用法:
-#   scripts/preview-structure.sh PLAN.md
+#   scripts/preview-structure.sh samples/rag-notes.pdf
 #   scripts/preview-structure.sh samples/*.pdf
 set -e
 

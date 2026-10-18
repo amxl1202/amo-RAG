@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  * cl100k 对中文的切分比 Qwen 更碎(1 个汉字常占 1~2 个 token),所以它给出的是**偏大**的估计。
  * 偏大对"别超上限"是安全的,代价是同样 token 预算下中文切片会比预期短一点。
  *
- * 想把偏差消掉,唯一可靠的办法是用真实接口校准(需要 DashScope API Key,板块③之后做):
+ * 想把偏差消掉,唯一可靠的办法是用真实接口校准(需要 DashScope API Key,接入向量化时一并做):
  * 1. 把一段已知文本发给 embedding 接口,读返回的 usage.total_tokens;
  * 2. 用 count(text) 得到本机估计值;
  * 3. 两者相除得到这个模型的实际倍率,把它记进配置,再修正切片阈值。
