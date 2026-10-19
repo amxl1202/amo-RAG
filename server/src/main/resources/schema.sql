@@ -15,12 +15,14 @@ CREATE TABLE IF NOT EXISTS documents (
     CONSTRAINT uk_documents_sha256 UNIQUE (sha256)
 );
 
--- FIXME(检索): fts 建在 documents 上,但关键词检索要检索的是 document_chunks.content,
--- 而 documents 只存文件名/摘要/大小,在这张表上做全文索引没有意义。
--- 这一列目前没有任何写入方,处于摆设状态。应在切片表上建 fts 并配 GIN 索引。
--- 关键词检索通道会用到 PG 全文检索,列提前留好(tsvector 由解析后回填)
+-- 关键词检索一度打算直接用 PG 全文索引,当初把 fts 列建在了 documents 上。
+-- 这里删掉,原因有两条:
+-- 1. 位置错:documents 只存文件名/摘要/大小,要检索的是 document_chunks.content;
+-- 2. 方案未定:PG 默认分词器不切中文(实测整句会变成一个词,搜单个词永远命中不了),
+--    中文方案在 ILIKE / pg_trgm / pg_jieba 之间还没选定,选定后在切片表上建对应索引。
+-- 这条 DROP 让已有数据库也能收敛,和本文件其它语句一样可重复执行。
 ALTER TABLE documents
-    ADD COLUMN IF NOT EXISTS fts tsvector;
+    DROP COLUMN IF EXISTS fts;
 
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents (status);
 
