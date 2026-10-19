@@ -3,6 +3,7 @@ package com.ragkb.document;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ragkb.common.ApiException;
 import com.ragkb.document.mapper.DocumentMapper;
+import com.ragkb.parse.ParserRegistry;
 import com.ragkb.storage.FileStorage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * 上传链路:校验 → 流式计算 SHA-256(写临时文件)→ 查重 → 落盘 → 入库。
@@ -35,10 +37,14 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentService {
 
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "docx", "md", "txt");
-
     private final DocumentMapper documentMapper;
     private final FileStorage fileStorage;
+    /**
+     * 支持哪些扩展名只从解析器注册表取,不在本类另存一份。
+     * 上一版这里硬编码了 {pdf, docx, md, txt},而注册表里其实还有 markdown ——
+     * 结果是名为 .markdown 的文件解析得动却传不进来,且新增格式要改两处。
+     */
+    private final ParserRegistry parserRegistry;
 
     @Value("${app.upload.max-size-mb:50}")
     private int maxSizeMb;
@@ -49,8 +55,11 @@ public class DocumentService {
         }
         String originalName = file.getOriginalFilename();
         String extension = extractExtension(originalName);
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
-            throw ApiException.badRequest("不支持的文件类型: " + extension + ",允许: " + ALLOWED_EXTENSIONS);
+        Set<String> supported = parserRegistry.supportedExtensions();
+        if (!supported.contains(extension)) {
+            // 排序后再输出:集合本身无序,排序保证同样的错误每次提示一致
+            throw ApiException.badRequest("不支持的文件类型: " + extension
+                    + ",当前支持: " + new TreeSet<>(supported));
         }
         if (file.getSize() > maxSizeMb * 1024L * 1024L) {
             throw ApiException.badRequest("文件超过 " + maxSizeMb + "MB 限制");
