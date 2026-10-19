@@ -29,3 +29,11 @@ app:
     root: ${STORAGE_ROOT:./data/files}
   upload:
     max-size-mb: 50
+  # TODO(向量化): 这里还没有 embedding / 对话模型的配置。
+  #  向量化与答案生成都依赖 DashScope,需要 DASHSCOPE_API_KEY;
+  #  在 .env 里配好之前,下面这些键名只是占位,不会被读取。
+  # ai:
+  #   dashscope:
+  #     api-key: ${DASHSCOPE_API_KEY:}
+  #     embedding-model: text-embedding-v3
+  #     chat-model: qwen-plus

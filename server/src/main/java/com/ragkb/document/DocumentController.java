@@ -34,6 +34,8 @@ public class DocumentController {
 
     @GetMapping
     public ApiResponse<List<DocumentView>> list() {
+        // FIXME(分层): 这里直接用了 mapper,绕过 service —— 与 upload/get 的写法不一致。
+        //  一旦列表要加过滤条件(比如"只看解析成功的"),业务规则就散落在 controller 里。
         List<DocumentView> list = documentMapper.selectList(new LambdaQueryWrapper<DocumentEntity>()
                         .orderByDesc(DocumentEntity::getCreatedAt)).stream()
                 .map(DocumentView::from)

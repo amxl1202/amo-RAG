@@ -37,6 +37,10 @@ import java.util.Map;
  * - {@code --chunks}:调用切片器并把每一片打出来,同时自动校验下标是否能回溯原文。
  *
  * 用法见 scripts/preview-structure.sh。
+ *
+ * TODO(清理): 这是开发工具,放在 main 源集里会被打进生产 jar。
+ *  更合适的位置是独立的 tools 模块或 test 源集;现在不动是因为挪走之后每次预览要多绕一步,
+ *  等真要部署 jar 时再挪。
  */
 public final class StructurePreview {
 

@@ -26,6 +26,10 @@ import java.util.List;
  * target(目标大小) / max(硬上限) / overlap(重叠)。
  * 定之前先用 {@code scripts/preview-structure.sh} 看语料的真实结构分布,
  * 再决定:标题平均多长、一个自然段平均多少 token、最长的表格行多少 token。
+ *
+ * TODO(切片): 本接口还没有实现类。实现后可直接用
+ *  {@code scripts/preview-structure.sh --chunks <文件>} 验证下面四条硬约束,
+ *  它会逐片打印并把"下标能否取回原文""index 是否连续"算出来。
  */
 public interface ChunkSplitter {
 

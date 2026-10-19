@@ -107,6 +107,9 @@ public class DocumentService {
             }
             log.info("document uploaded: id={}, name={}, sha256={}...", entity.getId(), originalName,
                     sha256.substring(0, 8));
+            // TODO(ingest): 上传到此为止,解析/切片/向量化都还没接进来 —— 文件落盘后不会再被处理。
+            //  下一步应在这里投递异步任务,由后台推进 status(UPLOADED → PARSING → CHUNKED → … → READY);
+            //  状态值已在 DocumentEntity 中定义,但只有 UPLOADED 被真正写入过。
             return entity;
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JVM 缺少 SHA-256 实现", e);

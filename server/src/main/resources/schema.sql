@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS documents (
     CONSTRAINT uk_documents_sha256 UNIQUE (sha256)
 );
 
+-- FIXME(检索): fts 建在 documents 上,但关键词检索要检索的是 document_chunks.content,
+-- 而 documents 只存文件名/摘要/大小,在这张表上做全文索引没有意义。
+-- 这一列目前没有任何写入方,处于摆设状态。应在切片表上建 fts 并配 GIN 索引。
 -- 关键词检索通道会用到 PG 全文检索,列提前留好(tsvector 由解析后回填)
 ALTER TABLE documents
     ADD COLUMN IF NOT EXISTS fts tsvector;
