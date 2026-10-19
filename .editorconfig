@@ -1,0 +1,22 @@
+# 统一编辑器的编码与换行,避免同一个文件在不同编辑器里表现不一致。
+# IDEA / VS Code 都原生支持这个文件,不需要各自再配一遍。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,html,css}]
+indent_size = 2
+
+[*.md]
+# Markdown 的行尾两个空格表示换行,不能删
+trim_trailing_whitespace = false
+
+[*.{cmd,bat}]
+# Windows 批处理必须 CRLF
+end_of_line = crlf
