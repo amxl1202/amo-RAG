@@ -23,3 +23,6 @@ logs/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 文档生成流水线的中间产物(草稿、HTML、溯源 YAML),不进版本库
+output/
