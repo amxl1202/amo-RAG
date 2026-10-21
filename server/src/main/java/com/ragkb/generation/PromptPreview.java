@@ -121,6 +121,7 @@ public final class PromptPreview {
                 System.out.printf("[口径] 本地 cl100k 估计 %d,实际 %d,倍率 %.3f(实际 / 本地)%n",
                         local, answer.promptTokens(), (double) answer.promptTokens() / local);
             }
+            printCitations(answer, prompt);
         } catch (ChatException e) {
             System.err.println("生成失败: " + e.getMessage() + "(可重试=" + e.retryable() + ")");
         }
@@ -193,6 +194,29 @@ public final class PromptPreview {
                     evidence.charStart(), evidence.charEnd());
         }
         System.out.println("=".repeat(100));
+    }
+
+    /** 打印引用解析结果:哪一句引了哪条、有没有编造的编号。 */
+    private static void printCitations(GeneratedAnswer answer, Prompt prompt) {
+        ParsedAnswer parsed = new CitationParser().parse(answer.text(), prompt);
+        System.out.println("---- 引用解析 ----");
+        System.out.printf("句子 %d / 有内容的句子 %d / 无引用句 %d / 引用覆盖率 %.2f%n",
+                parsed.sentences().size(), parsed.contentSentences(),
+                parsed.uncitedSentences(), parsed.citationCoverage());
+        for (ParsedSentence sentence : parsed.sentences()) {
+            String labels = sentence.citations().isEmpty() ? "-"
+                    : String.join(",", sentence.citations().stream().map(Citation::label).toList());
+            System.out.printf("  [%s] %s%n", labels, abbreviate(sentence.plain(), 40));
+        }
+        if (parsed.hasUnknownLabels()) {
+            System.out.println("  剔除的编造编号: " + String.join(",", parsed.unknownLabels()));
+            System.out.println("  剔除后的展示文本: " + parsed.sanitized());
+        }
+    }
+
+    private static String abbreviate(String text, int limit) {
+        String flat = text.replaceAll("\\s+", " ").strip();
+        return flat.length() <= limit ? flat : flat.substring(0, limit) + "…";
     }
 
     private static String extensionOf(String fileName) {
