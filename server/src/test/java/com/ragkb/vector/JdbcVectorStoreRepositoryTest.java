@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 /**
@@ -67,7 +68,7 @@ class JdbcVectorStoreRepositoryTest {
             long second = insertChunk(jdbc, documentId, 1, "第二段:讲向量索引");
             long third = insertChunk(jdbc, documentId, 2, "第三段:讲融合排序");
 
-            JdbcVectorStoreRepository repository = new JdbcVectorStoreRepository(jdbc);
+            JdbcVectorStoreRepository repository = new JdbcVectorStoreRepository(jdbc, "text-embedding-v3");
             int saved = repository.saveAll(List.of(
                     new ChunkVector(first, "text-embedding-v3", unit(0)),
                     new ChunkVector(second, "text-embedding-v3", unit(1)),
@@ -91,8 +92,8 @@ class JdbcVectorStoreRepositoryTest {
     }
 
     @Test
-    @DisplayName("同一个切片重复写入是覆盖,不会产生两行")
-    void upsertDoesNotDuplicate() {
+    @DisplayName("同一个切片重复写入是覆盖,且检索只在当前模型内进行")
+    void upsertDoesNotDuplicateAndSearchIsModelScoped() {
         JdbcTemplate jdbc;
         try {
             jdbc = connect();
@@ -105,17 +106,25 @@ class JdbcVectorStoreRepositoryTest {
         try {
             documentId = insertDocument(jdbc);
             long chunkId = insertChunk(jdbc, documentId, 0, "会被写入两次的切片");
-            JdbcVectorStoreRepository repository = new JdbcVectorStoreRepository(jdbc);
+            JdbcVectorStoreRepository repoA = new JdbcVectorStoreRepository(jdbc, "model-a");
+            JdbcVectorStoreRepository repoB = new JdbcVectorStoreRepository(jdbc, "model-b");
 
-            repository.saveAll(List.of(new ChunkVector(chunkId, "model-a", unit(0))));
-            repository.saveAll(List.of(new ChunkVector(chunkId, "model-b", unit(2))));
+            repoA.saveAll(List.of(new ChunkVector(chunkId, "model-a", unit(0))));
+            repoB.saveAll(List.of(new ChunkVector(chunkId, "model-b", unit(2))));
 
             Integer rows = jdbc.queryForObject(
                     "SELECT count(*) FROM chunk_embeddings WHERE chunk_id = ?", Integer.class, chunkId);
-            assertThat(rows).isEqualTo(1);
+            assertThat(rows).as("主键冲突应覆盖而不是新增一行").isEqualTo(1);
 
-            List<ScoredChunk> hits = repository.search(unit(2), 1);
-            assertThat(hits.get(0).chunkId()).as("应命中覆盖后的向量").isEqualTo(chunkId);
+            // 换模型期间旧行还在,但检索必须只看当前模型 —— 否则余弦相似度跨模型比较会让排序失真
+            assertThat(repoA.search(unit(0), 5)).as("model-a 已无数据,应查不到").isEmpty();
+            assertThat(repoB.search(unit(2), 1).get(0).chunkId()).isEqualTo(chunkId);
+            assertThat(repoA.count()).isZero();
+            assertThat(repoB.count()).isEqualTo(1);
+
+            assertThatThrownBy(() -> repoA.saveAll(List.of(new ChunkVector(chunkId, "model-c", unit(0)))))
+                    .as("写入与仓库模型不一致的向量应当被拒绝")
+                    .isInstanceOf(IllegalArgumentException.class);
         } finally {
             cleanup(jdbc, documentId);
         }
@@ -131,7 +140,7 @@ class JdbcVectorStoreRepositoryTest {
             Assumptions.abort("本地 PostgreSQL 不可用,跳过集成测试");
             return;
         }
-        JdbcVectorStoreRepository repository = new JdbcVectorStoreRepository(jdbc);
+        JdbcVectorStoreRepository repository = new JdbcVectorStoreRepository(jdbc, "text-embedding-v3");
 
         assertThat(repository.search(unit(0), 0)).isEmpty();
         assertThat(repository.search(new float[0], 5)).isEmpty();

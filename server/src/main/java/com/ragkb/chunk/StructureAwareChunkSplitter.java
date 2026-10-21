@@ -31,6 +31,10 @@ import java.util.List;
  *
  * 为什么不跳过空白块:{@link ChunkDraft} 会对空白内容抛异常。静默丢掉一段内容比当场报错
  * 危险得多,而且 {@link ParsedDocument} 已保证不会产出空白块;真出现了说明上游有 bug,应该炸出来。
+ *
+ * 一处已知的例外:文档末尾若只剩标题(最后一块就是标题),尾片会是"只有标题"的一片。
+ * 它不违反接口那四条硬约束(非空、下标合法、不超上限),而把这些标题丢掉就是直接丢内容 ——
+ * 两害相权,选择保留。
  */
 public class StructureAwareChunkSplitter implements ChunkSplitter {
 
@@ -108,27 +112,18 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
         for (SectionedBlock unit : units) {
             int unitTokens = tokenCounter.count(unit.block().text());
 
-            // 单个块就超过硬上限:先把它前面攒的正文封口,再把它自己切开
-            if (unitTokens > properties.maxTokens()) {
-                List<SectionedBlock> carriedHeadings = takeTrailingHeadings(buffer);
-                flush(drafts, buffer, document);
-                buffer.clear();
+            // 两条路径都要求"把前面的标题串并进第一片":
+            // ① 单个块本身超过硬上限;
+            // ② 缓冲里全是标题,且标题串 + 这一块也超过硬上限 ——
+            //    这时既不能封口(会留下只有标题的碎片),也不能直接拼(会超上限),
+            //    只能让第一片少装一些,把额度让给标题。
+            // 少了第 ② 条会静默产出超限切片:实测 48 token 标题 + 376 token 正文 → 425 token 的片,
+            // 而 max 是 400。这种超限不会报错,只有校验工具能发现。
+            boolean headingsPlusUnitTooLarge =
+                    !containsBody(buffer) && bufferTokens + unitTokens > properties.maxTokens();
+            if (unitTokens > properties.maxTokens() || headingsPlusUnitTooLarge) {
+                emitHeadingPrefixedUnit(drafts, buffer, unit, document);
                 bufferTokens = 0;
-
-                int reserved = 0;
-                for (SectionedBlock heading : carriedHeadings) {
-                    reserved += tokenCounter.count(heading.block().text());
-                }
-                List<ChunkDraft> pieces = hardSplit(unit, reserved);
-                for (int k = 0; k < pieces.size(); k++) {
-                    ChunkDraft piece = pieces.get(k);
-                    if (k == 0 && !carriedHeadings.isEmpty()) {
-                        // 标题必须领起下文:它的字符区间紧挨着这一块,把起点往前挪就能一并取回
-                        piece = pieceStartingAt(document, piece,
-                                carriedHeadings.get(0).block().charStart());
-                    }
-                    drafts.add(piece.withIndex(drafts.size()));
-                }
                 continue;
             }
 
@@ -154,6 +149,52 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
         }
         flush(drafts, buffer, document);
         return drafts;
+    }
+
+    /**
+     * 把"一串标题 + 一个块"输出成一片或若干片:标题并进第一片,第一片的可用额度相应减少,
+     * 从而保证任何一片都不超过 max。
+     *
+     * 调用方负责保证 unit 前面的缓冲里没有正文 —— 有正文的情况应先封口,不能并进来。
+     */
+    private void emitHeadingPrefixedUnit(List<ChunkDraft> drafts, List<SectionedBlock> buffer,
+                                         SectionedBlock unit, ParsedDocument document) {
+        List<SectionedBlock> carriedHeadings = takeTrailingHeadings(buffer);
+        flush(drafts, buffer, document);
+        buffer.clear();
+
+        int reserved = 0;
+        for (SectionedBlock heading : carriedHeadings) {
+            reserved += tokenCounter.count(heading.block().text());
+        }
+        List<ChunkDraft> pieces = hardSplit(unit, reserved);
+
+        if (!carriedHeadings.isEmpty()) {
+            int prefixStart = carriedHeadings.get(0).block().charStart();
+            // token 数<b>不可相加</b>:标题与正文各自计数之和,不等于拼起来之后的计数
+            // (实测会多 1 个,因为边界处的合并方式变了)。所以不能只按 reserved 扣额度,
+            // 要用"并上前缀之后的实测总量"回调预算,直到真的不超上限。
+            for (int guard = 0; guard < 8; guard++) {
+                int actual = tokenCounter.count(document.slice(prefixStart, pieces.get(0).charEnd()));
+                if (actual <= properties.maxTokens()) {
+                    break;
+                }
+                reserved += actual - properties.maxTokens();
+                if (reserved >= properties.maxTokens()) {
+                    break;
+                }
+                pieces = hardSplit(unit, reserved);
+            }
+        }
+
+        for (int k = 0; k < pieces.size(); k++) {
+            ChunkDraft piece = pieces.get(k);
+            if (k == 0 && !carriedHeadings.isEmpty()) {
+                // 标题必须领起下文:它的字符区间紧挨着这一块,把起点往前挪就能一并取回
+                piece = pieceStartingAt(document, piece, carriedHeadings.get(0).block().charStart());
+            }
+            drafts.add(piece.withIndex(drafts.size()));
+        }
     }
 
     /**

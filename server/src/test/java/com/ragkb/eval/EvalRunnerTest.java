@@ -146,4 +146,33 @@ class EvalRunnerTest {
                 "\"citation_precision\": null",
                 "\"evaluable_cases\": 1");
     }
+
+    @Test
+    @DisplayName("跨段落用例按前 r 片并集判命中,不要求同一片含全部关键词")
+    void multiHopMatchesByUnionOfTopK() {
+        EvalCase multiHop = new EvalCase("c05", "两路分数为什么不能相加,怎么绕开",
+                List.of("量纲完全不同", "归一化"), EvalCaseType.MULTI_HOP, false);
+        EvalDataset set = new EvalDataset(List.of(multiHop));
+        // 两个关键词分别落在第 1 片和第 2 片
+        EvalRunner.Retriever retriever = (q, k) -> List.of("这里只讲量纲完全不同", "这里只讲归一化");
+
+        EvalReport report = new EvalRunner().run(set, retriever, "fake");
+
+        assertThat(report.retrieval().recallAt5()).as("并集覆盖即算命中").isEqualTo(1.0);
+        assertThat(report.retrieval().mrr()).as("覆盖发生在第 2 片").isCloseTo(0.5, within(1e-9));
+    }
+
+    @Test
+    @DisplayName("跨段落用例在关键词始终不齐时仍算未命中")
+    void multiHopMissesWhenKeywordsNeverAllAppear() {
+        EvalCase multiHop = new EvalCase("c05", "问题", List.of("甲关键词", "乙关键词"),
+                EvalCaseType.MULTI_HOP, false);
+        EvalDataset set = new EvalDataset(List.of(multiHop));
+        EvalRunner.Retriever retriever = (q, k) -> List.of("只有甲关键词", "还是只有甲关键词");
+
+        EvalReport report = new EvalRunner().run(set, retriever, "fake");
+
+        assertThat(report.retrieval().recallAt20()).isZero();
+        assertThat(report.failedCases()).hasSize(1);
+    }
 }

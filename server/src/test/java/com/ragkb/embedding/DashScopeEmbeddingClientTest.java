@@ -204,4 +204,37 @@ class DashScopeEmbeddingClientTest {
         assertThat(result.totalTokens()).isZero();
         assertThat(poster.bodies).isEmpty();
     }
+
+    @Test
+    @DisplayName("退避等待中被中断时直接放弃,不再多发一次外部调用")
+    void interruptDuringBackoffAborts() {
+        RecordingPoster poster = new RecordingPoster(
+                new HttpPoster.Response(503, "busy"),
+                new HttpPoster.Response(200, okBody(1)));
+        DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 3), poster);
+
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> client.embed("甲"))
+                    .isInstanceOf(EmbeddingException.class)
+                    .hasMessageContaining("中断");
+        } finally {
+            Thread.interrupted();
+        }
+        assertThat(poster.bodies).as("中断之后不应再发请求").hasSize(1);
+    }
+
+    @Test
+    @DisplayName("向量数组里混进 null 时报明确错误,而不是空指针")
+    void nullElementInVectorIsReported() {
+        String body = "{\"output\":{\"embeddings\":[{\"text_index\":0,\"embedding\":[0.1,null,0.3]}]},"
+                + "\"usage\":{\"total_tokens\":3}}";
+        RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, body));
+        DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(
+                new EmbeddingProperties("k", "m", 3, 10, "http://localhost/unused", 5, 1), poster);
+
+        assertThatThrownBy(() -> client.embed("甲"))
+                .isInstanceOf(EmbeddingException.class)
+                .hasMessageContaining("不是数字");
+    }
 }

@@ -100,14 +100,56 @@ public class EvalRunner {
         return EvalReport.of(retrieverName, dataset, retrieval, generation, GENERATION_NOTE, failed);
     }
 
-    /** 返回首次命中的位次(从 1 开始),未命中返回 0。 */
+    /**
+     * 返回首次命中的位次(从 1 开始),未命中返回 0。
+     *
+     * 判据按题型区分,因为"命中"的语义本来就不同:
+     * <ul>
+     *   <li>单点事实 / 表格数值:同一个切片里必须同时出现全部期望词;</li>
+     *   <li>跨段落:{@code MULTI_HOP} 的答案本就需要两段共同支撑,要求"同一片含全部词"
+     *       等于自相矛盾 —— 两段一旦被切进不同片,这条用例就永远未命中,recall 被系统性拉低
+     *       且原因不可见。所以这里改成"前 r 片的<b>并集</b>覆盖全部期望词",
+     *       取最小的 r 作为命中位次。</li>
+     * </ul>
+     */
     private int firstHitRank(List<String> chunks, EvalCase evalCase) {
-        if (chunks == null) {
+        if (chunks == null || chunks.isEmpty()) {
             return 0;
+        }
+        if (evalCase.type() == EvalCaseType.MULTI_HOP) {
+            return firstCoverageRank(chunks, evalCase.expectedKeywords());
         }
         for (int i = 0; i < chunks.size(); i++) {
             if (evalCase.matches(chunks.get(i))) {
                 return i + 1;
+            }
+        }
+        return 0;
+    }
+
+    /** 最早的"前 r 片合起来已覆盖全部关键词"的位次(1 基),覆盖不了返回 0。 */
+    private int firstCoverageRank(List<String> chunks, List<String> keywords) {
+        if (keywords.isEmpty()) {
+            return 0;
+        }
+        for (int end = 0; end < chunks.size(); end++) {
+            boolean covered = true;
+            for (String keyword : keywords) {
+                boolean found = false;
+                for (int i = 0; i <= end; i++) {
+                    String chunk = chunks.get(i);
+                    if (chunk != null && chunk.contains(keyword)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    covered = false;
+                    break;
+                }
+            }
+            if (covered) {
+                return end + 1;
             }
         }
         return 0;

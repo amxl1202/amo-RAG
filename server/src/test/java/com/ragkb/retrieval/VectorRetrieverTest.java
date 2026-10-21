@@ -31,6 +31,11 @@ class VectorRetrieverTest {
         }
 
         @Override
+        public String model() {
+            return "test-model";
+        }
+
+        @Override
         public int saveAll(List<ChunkVector> vectors) {
             throw new UnsupportedOperationException();
         }
@@ -131,6 +136,11 @@ class VectorRetrieverTest {
     @DisplayName("向量维度过长或过短时存储层会报错,检索层不吞掉这个错误")
     void repositoryErrorPropagates() {
         VectorStoreRepository broken = new VectorStoreRepository() {
+            @Override
+            public String model() {
+                return "test-model";
+            }
+
             @Override
             public int saveAll(List<ChunkVector> vectors) {
                 return 0;

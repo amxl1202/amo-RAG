@@ -302,4 +302,24 @@ class StructureAwareChunkSplitterTest {
         assertInvariants(document, chunks, properties.maxTokens());
         assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.sectionPath()).isNotNull());
     }
+
+    @Test
+    @DisplayName("标题串 + 接近上限的正文段,不得产出超过硬上限的切片")
+    void headingPlusNearMaxBodyNeverExceedsMax() {
+        // 标题约 48 token、正文约 400 token,两者各自都不超过 max=400,但合在一起会超。
+        // 早先"缓冲里全是标题时不封口"直接 append,没有任何路径再检查 bufferTokens > max,
+        // 于是产出了 425 token 的切片 —— 违反接口硬约束③,而且不报错。
+        String heading = "章节标题".repeat(16);
+        String body = "正文内容测试句子。".repeat(50);
+        ChunkingProperties properties = ChunkingProperties.defaults();
+        ParsedDocument document = doc(RawBlock.heading(3, heading), RawBlock.paragraph(body));
+
+        List<ChunkDraft> chunks = new StructureAwareChunkSplitter(properties).split(document);
+
+        assertThat(chunks).as("必须切成多片才可能不超上限").hasSizeGreaterThan(1);
+        assertInvariants(document, chunks, properties.maxTokens());
+        assertThat(chunks.get(0).content())
+                .as("标题仍须领起正文")
+                .startsWith("章节标题");
+    }
 }

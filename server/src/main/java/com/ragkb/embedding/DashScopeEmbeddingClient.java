@@ -104,8 +104,10 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
             } catch (Exception e) {
                 lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             }
-            if (attempt < properties.maxAttempts()) {
-                sleepBeforeRetry(attempt);
+            if (attempt < properties.maxAttempts() && !sleepBeforeRetry(attempt)) {
+                // 退避等待时被中断:直接退出,而不是"恢复了中断标志还继续发下一次请求"。
+                // 后者会让关闭/超时路径下多发一次外部调用,语义不可预期。
+                throw new EmbeddingException("向量化被中断", false);
             }
         }
         throw new EmbeddingException("向量化失败(已尝试 " + properties.maxAttempts() + " 次): " + lastError, true);
@@ -154,7 +156,12 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
             }
             float[] vector = new float[vectorNode.size()];
             for (int i = 0; i < vectorNode.size(); i++) {
-                vector[i] = (float) vectorNode.get(i).asDouble();
+                JsonNode element = vectorNode.get(i);
+                // 只挡 size 挡不住畸形元素:数组里混进 null 或字符串时会直接 NPE 或被静默转成 0
+                if (element == null || !element.isNumber()) {
+                    throw new EmbeddingException("向量第 " + i + " 维不是数字,响应畸形", false);
+                }
+                vector[i] = (float) element.asDouble();
             }
             ordered[index] = vector;
             seen[index] = true;
@@ -188,11 +195,18 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
         return status == 429 || status >= 500;
     }
 
-    private static void sleepBeforeRetry(int attempt) {
+    /**
+     * 退避等待。
+     *
+     * @return true 表示可以继续重试;false 表示等待期间被中断,调用方应当直接放弃
+     */
+    private static boolean sleepBeforeRetry(int attempt) {
         try {
             Thread.sleep(200L * attempt);
+            return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 

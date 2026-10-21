@@ -42,14 +42,25 @@ public class JdbcVectorStoreRepository implements VectorStoreRepository {
                    1 - (e.embedding <=> ?::vector) AS score
             FROM chunk_embeddings e
             JOIN document_chunks c ON c.id = e.chunk_id
+            WHERE e.model = ?
             ORDER BY e.embedding <=> ?::vector
             LIMIT ?
             """;
 
     private final JdbcTemplate jdbcTemplate;
+    private final String model;
 
-    public JdbcVectorStoreRepository(JdbcTemplate jdbcTemplate) {
+    public JdbcVectorStoreRepository(JdbcTemplate jdbcTemplate, String model) {
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("model 不能为空:检索必须限定模型,否则新旧向量会混在一起排序");
+        }
         this.jdbcTemplate = jdbcTemplate;
+        this.model = model;
+    }
+
+    @Override
+    public String model() {
+        return model;
     }
 
     @Override
@@ -59,6 +70,10 @@ public class JdbcVectorStoreRepository implements VectorStoreRepository {
         }
         List<Object[]> args = new ArrayList<>(vectors.size());
         for (ChunkVector vector : vectors) {
+            if (!model.equals(vector.model())) {
+                throw new IllegalArgumentException("向量模型与本仓库不一致: 仓库=" + model
+                        + ", 待写入=" + vector.model() + "(chunkId=" + vector.chunkId() + ")");
+            }
             args.add(new Object[]{
                     vector.chunkId(), vector.model(), vector.dimension(), toLiteral(vector.embedding())});
         }
@@ -87,13 +102,14 @@ public class JdbcVectorStoreRepository implements VectorStoreRepository {
                         (Integer) rs.getObject("page_start"),
                         (Integer) rs.getObject("page_end"),
                         rs.getDouble("score")),
-                literal, literal, limit);
+                literal, model, literal, limit);
         return results == null ? List.of() : List.copyOf(results);
     }
 
     @Override
     public long count() {
-        Long value = jdbcTemplate.queryForObject("SELECT count(*) FROM chunk_embeddings", Long.class);
+        Long value = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM chunk_embeddings WHERE model = ?", Long.class, model);
         return value == null ? 0 : value;
     }
 
