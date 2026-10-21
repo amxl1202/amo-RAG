@@ -1,0 +1,72 @@
+[
+  {
+    "id": "c01",
+    "question": "固定长度切分的根本问题是什么？",
+    "expectedKeywords": ["不知道文本里哪一处是断点"],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c02",
+    "question": "HNSW 与 IVFFlat 的核心差别在哪里？",
+    "expectedKeywords": ["是否需要训练"],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c03",
+    "question": "重叠量控制在什么范围较为稳妥？",
+    "expectedKeywords": ["百分之十五到二十五"],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c04",
+    "question": "拒答阈值为什么应当偏保守？",
+    "expectedKeywords": ["编造更难被发现"],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c05",
+    "question": "混合检索里两路分数为什么不能直接相加，要怎么绕开？",
+    "expectedKeywords": ["量纲完全不同", "归一化"],
+    "type": "MULTI_HOP",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c06",
+    "question": "两条检索通道各自擅长什么情况？",
+    "expectedKeywords": ["语义相近但用词不同", "精确匹配"],
+    "type": "MULTI_HOP",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c07",
+    "question": "HNSW 的 m 参数越大意味着什么？",
+    "expectedKeywords": ["出边数", "召回越高"],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c08",
+    "question": "融合环节的 k 取零会导致什么？",
+    "expectedKeywords": ["第一名过度主导"],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c09",
+    "question": "这份文档里提到的服务器型号是什么？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c10",
+    "question": "作者的联系邮箱是多少？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  }
+]
