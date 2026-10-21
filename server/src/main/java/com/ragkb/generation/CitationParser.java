@@ -164,9 +164,12 @@ public class CitationParser {
             return List.of();
         }
         List<String> labels = new ArrayList<>();
+        boolean anyPrefixed = false;
         // 一条标记里并列多个编号:[E1, E2] / [E1、2] / [E1;E2]
         for (String part : compact.split("[,，、;；]")) {
-            String digits = part.startsWith("E") || part.startsWith("e") ? part.substring(1) : part;
+            boolean prefixed = part.startsWith("E") || part.startsWith("e");
+            anyPrefixed |= prefixed;
+            String digits = prefixed ? part.substring(1) : part;
             if (digits.isEmpty() || !digits.chars().allMatch(Character::isDigit)) {
                 return List.of();
             }
@@ -177,7 +180,11 @@ public class CitationParser {
                 return List.of();
             }
         }
-        return labels;
+        // 至少要有一个带 E 前缀的,才认作引用标记。
+        // 纯数字并列是正文数据,不是引用:[2026, 10] 会被读成 E2026 与 E10,
+        // 存在性校验再把它判成"编造",于是展示文本里整段被删 —— 用户看到的答案凭空少一段日期。
+        // 而单独的 [1] 又会被误当成对 E1 的引用,让引用正确率虚高。
+        return anyPrefixed ? labels : List.of();
     }
 
     private static boolean isSentenceEnd(String text, int index, char c) {

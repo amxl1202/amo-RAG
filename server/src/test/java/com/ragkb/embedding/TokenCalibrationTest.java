@@ -31,12 +31,17 @@ class TokenCalibrationTest {
             }
 
             @Override
-            public float[] embed(String text) {
+            public float[] embedQuery(String text) {
                 return new float[512];
             }
 
             @Override
-            public EmbeddingResult embedBatch(List<String> texts) {
+            public float[] embedDocument(String text) {
+                return new float[512];
+            }
+
+            @Override
+            public EmbeddingResult embedDocuments(List<String> texts) {
                 return new EmbeddingResult(List.of(new float[512]), tokens);
             }
         };

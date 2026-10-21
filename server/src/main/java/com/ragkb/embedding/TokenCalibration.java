@@ -44,7 +44,7 @@ public final class TokenCalibration {
         if (localTokens <= 0) {
             throw new IllegalArgumentException("本地计数为 0,无法计算倍率");
         }
-        int apiTokens = client.embedBatch(java.util.List.of(sample)).totalTokens();
+        int apiTokens = client.embedDocuments(java.util.List.of(sample)).totalTokens();
         if (apiTokens <= 0) {
             // 用量为 0 说明服务端没回报 usage,这种情况下算出来的倍率是假的,不能写进文档
             throw new IllegalArgumentException("服务端未回报 token 用量,无法校准");

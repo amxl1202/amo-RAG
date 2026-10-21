@@ -29,8 +29,8 @@ import java.util.TreeSet;
  * 能比阈值的只有<b>向量通道的原始余弦相似度</b>,所以这里只取向量通道的 top-1。
  *
  * <h2>为什么还要看关键词通道</h2>
- * 本项目的语料是中文技术笔记,实测纯向量通道的 MRR 反而最差(0.8167 对 0.9167):
- * 专有名词靠字面就能命中,而语义向量会把"意思相近"的片段挤上来。
+ * 本项目的语料是中文技术笔记,实测纯向量通道的 MRR 反而最差(59 条评估集上 0.7657 对 0.8320,
+ * 见 {@code docs/eval-baseline.md}):专有名词靠字面就能命中,而语义向量会把"意思相近"的片段挤上来。
  * 只看相似度会把"关键词精准命中、但语义相似度不高"的问题误拒掉,
  * 所以再加一条"问题词被覆盖的比例"作为第二判据 —— 两条都不达标才拒。
  *
@@ -124,6 +124,8 @@ public class EvidenceEvaluator {
         NONE,
         /** 两路都没命中。 */
         NO_HITS,
+        /** 两路都超时或异常,且都没有结果 —— 这是通道故障,不是"材料里没有"。 */
+        CHANNELS_DOWN,
         /** 两条判据都没达标。 */
         WEAK_EVIDENCE,
         /** 模型自己说材料不足。 */
@@ -182,8 +184,11 @@ public class EvidenceEvaluator {
      */
     public Gate gate(RetrievalSignals signals) {
         if (signals.vectorHits().isEmpty() && signals.keywordHits().isEmpty()) {
-            // 两路全空:要么语料里真的没有,要么两个通道都挂了。两种情况都不该调模型
-            return new Gate(true, Reason.NO_HITS, 0, 0);
+            // 两路全空有两种成因,必须分开:语料里真没有(正常拒答),或两路都超时/异常(服务故障)。
+            // 混成一种的后果不是代码错,而是指标错 —— 跑批会把通道故障记成"正确拒答",
+            // 数据库抖一下,拒答准确率就虚高,而且从数字上完全看不出来。
+            boolean bothDown = signals.vectorDegraded() && signals.keywordDegraded();
+            return new Gate(true, bothDown ? Reason.CHANNELS_DOWN : Reason.NO_HITS, 0, 0);
         }
         double similarity = signals.vectorTop1();
         double coverage = signals.keywordCoverage();

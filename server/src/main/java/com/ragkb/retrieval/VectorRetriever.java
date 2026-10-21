@@ -34,7 +34,8 @@ public class VectorRetriever implements ChunkSearcher {
         if (limit <= 0) {
             return List.of();
         }
-        float[] queryVector = embeddingClient.embed(question);
+        // 查询侧必须是 embedQuery:与入库用的 document 侧不是同一个分布
+        float[] queryVector = embeddingClient.embedQuery(question);
         return repository.search(queryVector, limit);
     }
 

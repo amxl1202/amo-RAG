@@ -26,7 +26,8 @@ import java.util.List;
  * @param promptTokens    模型输入 token
  * @param completionTokens 模型输出 token
  * @param retrievalMillis 检索耗时
- * @param generationMillis 生成 + 自检耗时
+ * @param answerMillis    生成 + 自检的总耗时。刻意不叫 generationMillis:自检是第二次模型调用,
+ *                        算进"生成"会让这个数比单次生成大近一倍,排查延迟时容易被误导
  */
 public record QaAnswer(
         String question,
@@ -42,7 +43,7 @@ public record QaAnswer(
         int promptTokens,
         int completionTokens,
         long retrievalMillis,
-        long generationMillis) {
+        long answerMillis) {
 
     public enum Status {
         /** 正常作答。 */
@@ -63,7 +64,7 @@ public record QaAnswer(
     }
 
     public long totalMillis() {
-        return retrievalMillis + generationMillis;
+        return retrievalMillis + answerMillis;
     }
 
     /** 拒答原因;作答时为 null。 */

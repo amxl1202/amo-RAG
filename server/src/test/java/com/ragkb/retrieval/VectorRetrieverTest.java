@@ -53,8 +53,10 @@ class VectorRetrieverTest {
         }
     }
 
+    /** 记录两侧各被调了几次 —— 检索走错到文档侧方法时,这里会立刻暴露。 */
     private static final class CountingEmbeddingClient implements EmbeddingClient {
-        private int calls;
+        private int queryCalls;
+        private int documentCalls;
 
         @Override
         public int dimension() {
@@ -67,14 +69,20 @@ class VectorRetrieverTest {
         }
 
         @Override
-        public float[] embed(String text) {
-            calls++;
+        public float[] embedQuery(String text) {
+            queryCalls++;
             return new float[]{1, 0, 0, 0};
         }
 
         @Override
-        public EmbeddingResult embedBatch(List<String> texts) {
-            calls++;
+        public float[] embedDocument(String text) {
+            documentCalls++;
+            return new float[]{1, 0, 0, 0};
+        }
+
+        @Override
+        public EmbeddingResult embedDocuments(List<String> texts) {
+            documentCalls++;
             return new EmbeddingResult(List.of(new float[]{1, 0, 0, 0}), 1);
         }
     }
@@ -114,7 +122,7 @@ class VectorRetrieverTest {
         VectorRetriever retriever = new VectorRetriever(client, new FakeRepository(List.of()));
 
         assertThat(retriever.search("问题", 0)).isEmpty();
-        assertThat(client.calls).as("不该调用向量化接口").isZero();
+        assertThat(client.queryCalls).as("不该调用向量化接口").isZero();
     }
 
     @Test
@@ -175,5 +183,20 @@ class VectorRetrieverTest {
                 new FakeRepository(new ArrayList<>()));
 
         assertThat(retriever.search("问题", 5)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("检索走的是查询侧向量,不是入库用的文档侧")
+    void usesQuerySideEmbedding() {
+        CountingEmbeddingClient client = new CountingEmbeddingClient();
+        VectorRetriever retriever = new VectorRetriever(client,
+                new FakeRepository(List.of(chunk(1, "甲", 0.9))));
+
+        retriever.search("问题", 5);
+
+        assertThat(client.queryCalls).isEqualTo(1);
+        assertThat(client.documentCalls)
+                .as("查询侧与文档侧不是同一分布,调错会让相似度整体失真")
+                .isZero();
     }
 }

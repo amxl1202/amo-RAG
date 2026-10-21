@@ -184,4 +184,26 @@ class CitationParserTest {
         assertThatThrownBy(() -> parser.parse("甲[E1]。", null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("正文里的数字方括号不是引用:不能被删,也不能被当成 E2026")
+    void numericBracketsAreNotCitations() {
+        ParsedAnswer answer = parser.parse("该规范于[2026, 10]发布[E1]。", prompt(2));
+
+        // 日期必须原样留在展示文本里 —— 用户看到的答案不能凭空少一段
+        assertThat(answer.sanitized()).contains("[2026, 10]");
+        assertThat(answer.unknownLabels()).isEmpty();
+        assertThat(answer.citations()).extracting(Citation::label).containsExactly("E1");
+    }
+
+    @Test
+    @DisplayName("单独的 [1] 不算对 E1 的引用")
+    void bareNumberIsNotACitation() {
+        ParsedAnswer answer = parser.parse("见注[1]。真正的引用[E1]。", prompt(2));
+
+        assertThat(answer.sentences().get(0).citations()).isEmpty();
+        assertThat(answer.sentences().get(0).text()).contains("[1]");
+        assertThat(answer.citations()).extracting(Citation::label).containsExactly("E1");
+        assertThat(answer.uncitedSentences()).isEqualTo(1);
+    }
 }

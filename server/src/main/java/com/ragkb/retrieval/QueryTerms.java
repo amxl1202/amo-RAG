@@ -89,11 +89,8 @@ public final class QueryTerms {
         }
         String text = run.toString();
         run.setLength(0);
-        if (text.length() == 1) {
-            // 单字太宽,只在整段只有一个汉字时才保留
-            terms.add(text);
-            return;
-        }
+        // 单字不保留:extract 最后会按长度 ≥ 2 过滤,这里即使加进去也会被丢掉。
+        // 保留一个"加了再滤掉"的分支只会让人误以为单字有机会成为检索词。
         for (int i = 0; i + 2 <= text.length(); i++) {
             terms.add(text.substring(i, i + 2));
         }

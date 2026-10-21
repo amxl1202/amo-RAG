@@ -27,6 +27,9 @@ import java.util.Map;
 public class DashScopeEmbeddingClient implements EmbeddingClient {
 
     private static final String AUTH_HEADER = "Authorization";
+    /** 非对称检索的两侧类型:查询是短问题,文档是整段正文。 */
+    private static final String TEXT_TYPE_QUERY = "query";
+    private static final String TEXT_TYPE_DOCUMENT = "document";
     private static final int MAX_REPORTED_BODY = 300;
 
     private final EmbeddingProperties properties;
@@ -53,21 +56,25 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
     }
 
     @Override
-    public float[] embed(String text) {
+    public float[] embedQuery(String text) {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException("待向量化的文本不能为空");
         }
-        EmbeddingResult result = embedBatch(List.of(text));
-        return result.vectors().get(0);
+        return callWithRetry(List.of(text), TEXT_TYPE_QUERY).vectors().get(0);
     }
 
     @Override
-    public EmbeddingResult embedBatch(List<String> texts) {
+    public float[] embedDocument(String text) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("待向量化的文本不能为空");
+        }
+        return callWithRetry(List.of(text), TEXT_TYPE_DOCUMENT).vectors().get(0);
+    }
+
+    @Override
+    public EmbeddingResult embedDocuments(List<String> texts) {
         if (texts == null || texts.isEmpty()) {
             return new EmbeddingResult(List.of(), 0);
-        }
-        if (!properties.hasApiKey()) {
-            throw new EmbeddingException("缺少 DASHSCOPE_API_KEY:向量化需要调用外部接口,请先在环境变量里配置", false);
         }
         for (String text : texts) {
             if (text == null || text.isBlank()) {
@@ -79,15 +86,18 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
         // 接口对单次批量有上限,超了整批被拒,所以这里按 batchSize 切片
         for (int from = 0; from < texts.size(); from += properties.batchSize()) {
             int to = Math.min(texts.size(), from + properties.batchSize());
-            EmbeddingResult part = callWithRetry(texts.subList(from, to));
+            EmbeddingResult part = callWithRetry(texts.subList(from, to), TEXT_TYPE_DOCUMENT);
             all.addAll(part.vectors());
             totalTokens += part.totalTokens();
         }
         return new EmbeddingResult(all, totalTokens);
     }
 
-    private EmbeddingResult callWithRetry(List<String> slice) {
-        String requestBody = buildRequestBody(slice);
+    private EmbeddingResult callWithRetry(List<String> slice, String textType) {
+        // 放在唯一的外部调用入口上:三个公开方法(单条查询 / 单条文档 / 批量文档)都经过这里,
+        // 只写在批量方法里会让单条调用先打一个必然 401 的请求
+        requireApiKey();
+        String requestBody = buildRequestBody(slice, textType);
         String lastError = "未知错误";
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             try {
@@ -121,15 +131,25 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
         throw new EmbeddingException("向量化失败(已尝试 " + properties.maxAttempts() + " 次): " + lastError, true);
     }
 
+    private void requireApiKey() {
+        if (!properties.hasApiKey()) {
+            throw new EmbeddingException("缺少 DASHSCOPE_API_KEY:向量化需要调用外部接口,请先在环境变量里配置", false);
+        }
+    }
+
     private Map<String, String> authHeaders() {
         return Map.of(AUTH_HEADER, "Bearer " + properties.apiKey(), "Content-Type", "application/json");
     }
 
-    private String buildRequestBody(List<String> slice) {
+    private String buildRequestBody(List<String> slice, String textType) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", properties.model());
         payload.put("input", Map.of("texts", slice));
-        payload.put("parameters", Map.of("dimension", properties.dimension()));
+        // text_type 放在 parameters 里,两侧都显式给,不依赖服务端默认值。
+        // 实测(2026-10-21,专属实例 text-embedding-v3):query 与 document 输出的向量余弦为
+        // 1.000000 —— 参数被接受但不改变结果。所以这一行现在没有可测量的收益,
+        // 它防的是"换模型/换供应商后默认值变了,而调用方不知道"。
+        payload.put("parameters", Map.of("dimension", properties.dimension(), "text_type", textType));
         return mapper.writeValueAsString(payload);
     }
 

@@ -193,4 +193,22 @@ class QaServiceTest {
         assertThat(answer.unknownLabels()).containsExactly("E9");
         assertThat(answer.text()).doesNotContain("E9").contains("[E1]");
     }
+
+    @Test
+    @DisplayName("两路同时故障:状态是 FAILED —— 不能伪装成'材料中未提及'")
+    void bothChannelsDownIsFailureNotRefusal() {
+        QaService service = service(
+                (q, limit) -> {
+                    throw new IllegalStateException("向量通道挂了");
+                },
+                (q, limit) -> {
+                    throw new IllegalStateException("关键词通道也挂了");
+                },
+                new ScriptedModel());
+
+        QaAnswer answer = service.ask("问题");
+
+        assertThat(answer.status()).isEqualTo(QaAnswer.Status.FAILED);
+        assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.CHANNELS_DOWN);
+    }
 }

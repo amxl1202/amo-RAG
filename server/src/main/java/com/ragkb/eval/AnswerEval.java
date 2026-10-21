@@ -144,6 +144,10 @@ public final class AnswerEval {
         System.out.printf("  误拒率       %.4f  (%d/%d 条文档内问题被错误拒答)%n",
                 metrics.falseRefusalRate, metrics.falseRefusals, metrics.inScope);
         System.out.printf("  编造编号次数 %d(应恒为 0;不为 0 说明提示词需要收紧)%n", metrics.unknownLabels);
+        if (metrics.degradedCases > 0) {
+            System.out.printf("  通道故障     %d 题(已从拒答指标中剔除 —— 检索不完整不能算模型表现)%n",
+                    metrics.degradedCases);
+        }
         System.out.printf("  用量         %d token,耗时 %.1f 秒%n",
                 metrics.totalTokens, metrics.totalMillis / 1000.0);
         System.exit(metrics.passed() ? 0 : 1);
@@ -179,6 +183,9 @@ public final class AnswerEval {
 
     /** 单题一行的说明文字,失败原因要能一眼看出是"拒了不该拒的"还是"引了不该引的"。 */
     private static String describe(EvalCase evalCase, QaAnswer answer, int correct, int total) {
+        if (answer.status() == QaAnswer.Status.FAILED) {
+            return "调用或通道故障";
+        }
         if (evalCase.shouldRefuse()) {
             return answer.status() == QaAnswer.Status.REFUSED
                     ? "正确拒答(" + answer.reason() + ")"
@@ -200,7 +207,7 @@ public final class AnswerEval {
                            double answerSupportRate, int keptSentences, int judgedSentences,
                            double refusalAccuracy, int correctRefusals, int outOfScope,
                            double falseRefusalRate, int falseRefusals, int inScope,
-                           int unknownLabels, int totalTokens, long totalMillis) {
+                           int unknownLabels, int totalTokens, long totalMillis, int degradedCases) {
 
         /** 两个阈值下的硬性验收:文档外全拒、文档内 0 误拒。 */
         boolean passed() {
@@ -220,6 +227,7 @@ public final class AnswerEval {
         int unknown = 0;
         int tokens = 0;
         long millis = 0;
+        int degraded = 0;
 
         for (CaseResult result : results) {
             QaAnswer answer = result.answer();
@@ -232,7 +240,11 @@ public final class AnswerEval {
                 judged += answer.verdict().kept() + answer.verdict().dropped();
                 kept += answer.verdict().kept();
             }
-            if (result.evalCase().shouldRefuse()) {
+            // 有一路降级的题不进拒答指标:那一道的检索结果不完整,把它的拒答/误拒
+            // 记进准确率,等于把通道故障算成模型表现。单列一行,让"这次跑得不干净"可见
+            if (answer.degraded()) {
+                degraded++;
+            } else if (result.evalCase().shouldRefuse()) {
                 outOfScope++;
                 if (answer.status() == QaAnswer.Status.REFUSED) {
                     correctRefusals++;
@@ -249,7 +261,7 @@ public final class AnswerEval {
                 ratio(kept, judged), kept, judged,
                 ratio(correctRefusals, outOfScope), correctRefusals, outOfScope,
                 ratio(falseRefusals, inScope), falseRefusals, inScope,
-                unknown, tokens, millis);
+                unknown, tokens, millis, degraded);
     }
 
     private static double ratio(int numerator, int denominator) {

@@ -18,7 +18,7 @@ import java.util.List;
  *
  * <h2>为什么整篇一起算,而不是一条一条来</h2>
  * 接口按条计费、按批限流。整篇切片一次批量提交,调用次数从 N 降到 ceil(N/batchSize),
- * 失败重试的代价也小得多。{@code EmbeddingClient.embedBatch} 内部已经做了分批与重试,
+ * 失败重试的代价也小得多。{@code EmbeddingClient.embedDocuments} 内部已经做了分批与重试,
  * 这里只负责把切片喂进去、把结果按顺序写回来。
  *
  * <h2>为什么写向量前不先删旧向量</h2>
@@ -53,7 +53,7 @@ public class VectorizeService {
         }
 
         List<String> contents = chunks.stream().map(DocumentChunkEntity::getContent).toList();
-        EmbeddingClient.EmbeddingResult result = embeddingClient.embedBatch(contents);
+        EmbeddingClient.EmbeddingResult result = embeddingClient.embedDocuments(contents);
 
         // 顺序必须与入参一致:embedBatch 的契约是按 text_index 重排过
         List<ChunkVector> vectors = new ArrayList<>(chunks.size());

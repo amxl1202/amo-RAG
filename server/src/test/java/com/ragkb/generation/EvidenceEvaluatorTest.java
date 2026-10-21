@@ -242,4 +242,25 @@ class EvidenceEvaluatorTest {
         assertThat(verdict.refuse()).isFalse();
         assertThat(verdict.kept()).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("两路都降级且为空:原因是通道故障,不是'材料里没有'")
+    void bothChannelsDownIsNotANormalRefusal() {
+        EvidenceEvaluator.Gate gate = evaluator.gate(
+                new EvidenceEvaluator.RetrievalSignals(List.of(), List.of(), true, true, 10));
+
+        assertThat(gate.refuse()).isTrue();
+        assertThat(gate.reason())
+                .as("把服务故障记成拒答,会让拒答准确率虚高")
+                .isEqualTo(EvidenceEvaluator.Reason.CHANNELS_DOWN);
+    }
+
+    @Test
+    @DisplayName("只有一路降级且为空:仍按'没找到'处理,因为另一路是正常的")
+    void singleChannelDownStaysNoHits() {
+        EvidenceEvaluator.Gate gate = evaluator.gate(
+                new EvidenceEvaluator.RetrievalSignals(List.of(), List.of(), true, false, 10));
+
+        assertThat(gate.reason()).isEqualTo(EvidenceEvaluator.Reason.NO_HITS);
+    }
 }

@@ -117,7 +117,7 @@ public final class RetrievalComparison {
         }
 
         private List<ScoredChunk> search(String question, int limit) {
-            float[] vector = cache.computeIfAbsent(question, client::embed);
+            float[] vector = cache.computeIfAbsent(question, client::embedQuery);
             return repository.search(vector, limit);
         }
     }

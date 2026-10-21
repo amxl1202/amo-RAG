@@ -80,7 +80,7 @@ class DashScopeEmbeddingClientTest {
         RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, okBody(1)));
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 1), poster);
 
-        client.embed("合规审计的触发条件是什么");
+        client.embedDocument("合规审计的触发条件是什么");
 
         assertThat(poster.bodies).hasSize(1);
         assertThat(poster.bodies.get(0))
@@ -101,7 +101,7 @@ class DashScopeEmbeddingClientTest {
         RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, body));
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 1), poster);
 
-        EmbeddingClient.EmbeddingResult result = client.embedBatch(List.of("第一段", "第二段"));
+        EmbeddingClient.EmbeddingResult result = client.embedDocuments(List.of("第一段", "第二段"));
 
         assertThat(result.vectors()).hasSize(2);
         assertThat(result.vectors().get(0)[0]).as("第 0 条应是 text_index=0 的向量").isEqualTo(100.0f);
@@ -117,7 +117,7 @@ class DashScopeEmbeddingClientTest {
         RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, body));
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 1), poster);
 
-        assertThatThrownBy(() -> client.embed("短文本"))
+        assertThatThrownBy(() -> client.embedDocument("短文本"))
                 .isInstanceOf(EmbeddingException.class)
                 .hasMessageContaining("维度不符");
     }
@@ -128,7 +128,7 @@ class DashScopeEmbeddingClientTest {
         RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, okBody(1)));
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 1), poster);
 
-        assertThatThrownBy(() -> client.embedBatch(List.of("甲", "乙")))
+        assertThatThrownBy(() -> client.embedDocuments(List.of("甲", "乙")))
                 .isInstanceOf(EmbeddingException.class)
                 .hasMessageContaining("不一致");
     }
@@ -141,7 +141,7 @@ class DashScopeEmbeddingClientTest {
                 new HttpPoster.Response(200, okBody(7)));
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 3), poster);
 
-        EmbeddingClient.EmbeddingResult result = client.embedBatch(List.of("甲"));
+        EmbeddingClient.EmbeddingResult result = client.embedDocuments(List.of("甲"));
 
         assertThat(poster.bodies).hasSize(2);
         assertThat(result.vectors().get(0)[0]).isEqualTo(7.0f);
@@ -153,7 +153,7 @@ class DashScopeEmbeddingClientTest {
         RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(401, "invalid api key"));
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 3), poster);
 
-        assertThatThrownBy(() -> client.embed("甲"))
+        assertThatThrownBy(() -> client.embedDocument("甲"))
                 .isInstanceOf(EmbeddingException.class)
                 .hasMessageContaining("401");
         assertThat(poster.bodies).as("只应发一次请求").hasSize(1);
@@ -171,7 +171,7 @@ class DashScopeEmbeddingClientTest {
         for (int i = 0; i < 12; i++) {
             texts.add("第 " + i + " 段");
         }
-        EmbeddingClient.EmbeddingResult result = client.embedBatch(texts);
+        EmbeddingClient.EmbeddingResult result = client.embedDocuments(texts);
 
         assertThat(poster.bodies).hasSize(2);
         assertThat(result.vectors()).hasSize(12);
@@ -187,7 +187,7 @@ class DashScopeEmbeddingClientTest {
                 new EmbeddingProperties("", "text-embedding-v3", DIM, 10, "http://localhost/unused", 5, 1),
                 poster);
 
-        assertThatThrownBy(() -> client.embed("甲"))
+        assertThatThrownBy(() -> client.embedDocument("甲"))
                 .isInstanceOf(EmbeddingException.class)
                 .hasMessageContaining("DASHSCOPE_API_KEY");
         assertThat(poster.bodies).isEmpty();
@@ -199,7 +199,7 @@ class DashScopeEmbeddingClientTest {
         RecordingPoster poster = new RecordingPoster();
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(props(10, 1), poster);
 
-        EmbeddingClient.EmbeddingResult result = client.embedBatch(List.of());
+        EmbeddingClient.EmbeddingResult result = client.embedDocuments(List.of());
 
         assertThat(result.vectors()).isEmpty();
         assertThat(result.totalTokens()).isZero();
@@ -216,7 +216,7 @@ class DashScopeEmbeddingClientTest {
 
         Thread.currentThread().interrupt();
         try {
-            assertThatThrownBy(() -> client.embed("甲"))
+            assertThatThrownBy(() -> client.embedDocument("甲"))
                     .isInstanceOf(EmbeddingException.class)
                     .hasMessageContaining("中断");
         } finally {
@@ -234,8 +234,26 @@ class DashScopeEmbeddingClientTest {
         DashScopeEmbeddingClient client = new DashScopeEmbeddingClient(
                 new EmbeddingProperties("k", "m", 3, 10, "http://localhost/unused", 5, 1), poster);
 
-        assertThatThrownBy(() -> client.embed("甲"))
+        assertThatThrownBy(() -> client.embedDocument("甲"))
                 .isInstanceOf(EmbeddingException.class)
                 .hasMessageContaining("不是数字");
+    }
+
+    @Test
+    @DisplayName("查询侧必须带 text_type=query —— 不传时服务端按 document 处理,查询向量会被削弱")
+    void querySideSendsTextType() {
+        RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, okBody(1)));
+        new DashScopeEmbeddingClient(props(10, 1), poster).embedQuery("合规审计的触发条件是什么");
+
+        assertThat(poster.bodies.get(0)).contains("\"text_type\":\"query\"");
+    }
+
+    @Test
+    @DisplayName("入库侧带 text_type=document")
+    void documentSideSendsTextType() {
+        RecordingPoster poster = new RecordingPoster(new HttpPoster.Response(200, okBody(1)));
+        new DashScopeEmbeddingClient(props(10, 1), poster).embedDocuments(List.of("甲"));
+
+        assertThat(poster.bodies.get(0)).contains("\"text_type\":\"document\"");
     }
 }

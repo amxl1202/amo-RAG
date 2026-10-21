@@ -83,8 +83,15 @@ public class QaService {
                 EvidenceEvaluator.maxKeywordScore(question));
         EvidenceEvaluator.Gate gate = evaluator.gate(signals);
         if (gate.refuse()) {
-            // 证据明显不够:不拼提示词、不调模型、不做自检
-            return refused(question, gate, hits, 0, 0, retrievalMillis);
+            // 证据明显不够:不拼提示词、不调模型、不做自检。
+            // 但"两路都挂了"与"材料里没有"必须分成两种状态 —— 前者是服务故障,
+            // 伪装成"材料中未提及"会让用户以为文档里真的没有,也会让跑批把故障记成正确拒答
+            QaAnswer.Status status = gate.reason() == EvidenceEvaluator.Reason.CHANNELS_DOWN
+                    ? QaAnswer.Status.FAILED
+                    : QaAnswer.Status.REFUSED;
+            String text = status == QaAnswer.Status.FAILED ? "" : PromptBuilder.INSUFFICIENT;
+            return new QaAnswer(question, status, text, List.of(), gate, null, List.of(),
+                    0, 0, hits.anyDegraded(), 0, 0, retrievalMillis, 0);
         }
 
         List<ScoredChunk> fused = fuser.fuse(hits.vectorHits(), hits.keywordHits(), RRF_K, channelLimit)
@@ -95,7 +102,7 @@ public class QaService {
         }
         Prompt prompt = promptBuilder.build(question, evidences);
 
-        long generationStarted = System.nanoTime();
+        long answerStarted = System.nanoTime();
         GeneratedAnswer generated;
         try {
             generated = generator.generate(prompt);
@@ -104,12 +111,12 @@ public class QaService {
             return new QaAnswer(question, QaAnswer.Status.FAILED, "",
                     List.of(), gate, null, List.of(), fused.size(), prompt.citations().size(),
                     hits.anyDegraded(), 0, 0, retrievalMillis,
-                    (System.nanoTime() - generationStarted) / 1_000_000);
+                    (System.nanoTime() - answerStarted) / 1_000_000);
         }
 
         ParsedAnswer parsed = new CitationParser().parse(generated.text(), prompt);
         EvidenceEvaluator.Verdict verdict = evaluator.verify(prompt, parsed, chatModel);
-        long generationMillis = (System.nanoTime() - generationStarted) / 1_000_000;
+        long answerMillis = (System.nanoTime() - answerStarted) / 1_000_000;
 
         return new QaAnswer(question,
                 verdict.refuse() ? QaAnswer.Status.REFUSED : QaAnswer.Status.ANSWERED,
@@ -117,7 +124,7 @@ public class QaService {
                 verdict.refuse() ? List.of() : parsed.citations(),
                 gate, verdict, parsed.unknownLabels(), fused.size(), prompt.citations().size(),
                 hits.anyDegraded(), generated.promptTokens(), generated.completionTokens(),
-                retrievalMillis, generationMillis);
+                retrievalMillis, answerMillis);
     }
 
     private static QaAnswer refused(String question, EvidenceEvaluator.Gate gate,

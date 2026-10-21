@@ -49,11 +49,27 @@ public final class DotEnv {
             String key = trimmed.substring(0, eq).trim();
             String value = trimmed.substring(eq + 1).trim();
             if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+                // 引号内的内容原样保留:密码里出现 " #" 是合法的
                 value = value.substring(1, value.length() - 1);
+            } else {
+                value = stripInlineComment(value);
             }
             values.put(key, value);
         }
         return values;
+    }
+
+    /**
+     * 截掉行尾注释。
+     *
+     * 只认"空白 + #":.env 里常见的写法是 {@code KEY=value # 备注}。
+     * 不认紧贴的 {@code value#x} —— 那更像值的一部分(锚点、片段标识),
+     * 且真实密码里出现 {@code #} 的比出现 {@code " #"} 的多得多。
+     * 需要保留 {@code " #"} 时把整个值用双引号包起来。
+     */
+    private static String stripInlineComment(String value) {
+        int marker = value.indexOf(" #");
+        return marker < 0 ? value : value.substring(0, marker).trim();
     }
 
     /**
