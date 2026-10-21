@@ -1,0 +1,130 @@
+package com.ragkb.qa;
+
+import com.ragkb.generation.AnswerGenerator;
+import com.ragkb.generation.ChatException;
+import com.ragkb.generation.ChatModel;
+import com.ragkb.generation.CitationParser;
+import com.ragkb.generation.Evidence;
+import com.ragkb.generation.EvidenceEvaluator;
+import com.ragkb.generation.GeneratedAnswer;
+import com.ragkb.generation.ParsedAnswer;
+import com.ragkb.generation.Prompt;
+import com.ragkb.generation.PromptBuilder;
+import com.ragkb.retrieval.HybridRetriever;
+import com.ragkb.retrieval.RrfFuser;
+import com.ragkb.vector.ScoredChunk;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 一次问答的编排:检索 → 门控 → 拼提示词 → 生成 → 解析引用 → 自检。
+ *
+ * <h2>这一层只做顺序与短路</h2>
+ * 每一步的实现都在各自包里,这里不重复它们的判断逻辑。唯一的职责是决定
+ * <b>哪一步可以跳过</b>:两路全空时跳过生成与自检,门控拒答时跳过生成,
+ * 模型自述材料不足时跳过自检。每一次跳过都是省下的一次外部调用。
+ *
+ * <h2>为什么门控要用"两路原始结果"而不是融合结果</h2>
+ * 融合后的分数是名次倒数,已经失去"像不像"的信息;判断证据够不够,
+ * 需要的是向量通道的余弦相似度与关键词通道的覆盖率。所以先把
+ * {@link HybridRetriever.HybridResult} 原样交给门控,再融合取前 N 条喂模型。
+ *
+ * <h2>降级怎么处理</h2>
+ * 单通道降级时另一路仍然可用,照常作答,但把 {@code degraded} 标出来 ——
+ * 跑批时"这一题答得差"和"这一题那一路挂了"必须能分开。
+ */
+public class QaService {
+
+    /** RRF 的平滑常数。取论文默认值:三组实验(k=0/20/60)在本语料上结果一致,没有数据支持别的选择。 */
+    public static final int RRF_K = 60;
+
+    private final HybridRetriever retriever;
+    private final RrfFuser fuser;
+    private final PromptBuilder promptBuilder;
+    private final AnswerGenerator generator;
+    private final EvidenceEvaluator evaluator;
+    private final ChatModel chatModel;
+    private final DocumentTitles titles;
+    private final int channelLimit;
+
+    public QaService(HybridRetriever retriever, RrfFuser fuser, PromptBuilder promptBuilder,
+                     AnswerGenerator generator, EvidenceEvaluator evaluator, ChatModel chatModel,
+                     DocumentTitles titles, int channelLimit) {
+        if (channelLimit <= 0) {
+            throw new IllegalArgumentException("channelLimit 必须为正: " + channelLimit);
+        }
+        this.retriever = retriever;
+        this.fuser = fuser;
+        this.promptBuilder = promptBuilder;
+        this.generator = generator;
+        this.evaluator = evaluator;
+        this.chatModel = chatModel;
+        this.titles = titles;
+        this.channelLimit = channelLimit;
+    }
+
+    /**
+     * 回答一个问题。
+     *
+     * @param question 问题原文
+     * @return 答案与全部中间量;模型故障时返回 {@link QaAnswer.Status#FAILED},不抛异常
+     */
+    public QaAnswer ask(String question) {
+        if (question == null || question.isBlank()) {
+            throw new IllegalArgumentException("问题不能为空");
+        }
+        long retrievalStarted = System.nanoTime();
+        HybridRetriever.HybridResult hits = retriever.search(question, channelLimit);
+        long retrievalMillis = (System.nanoTime() - retrievalStarted) / 1_000_000;
+
+        EvidenceEvaluator.RetrievalSignals signals = new EvidenceEvaluator.RetrievalSignals(
+                hits.vectorHits(), hits.keywordHits(), hits.vectorDegraded(), hits.keywordDegraded(),
+                EvidenceEvaluator.maxKeywordScore(question));
+        EvidenceEvaluator.Gate gate = evaluator.gate(signals);
+        if (gate.refuse()) {
+            // 证据明显不够:不拼提示词、不调模型、不做自检
+            return refused(question, gate, hits, 0, 0, retrievalMillis);
+        }
+
+        List<ScoredChunk> fused = fuser.fuse(hits.vectorHits(), hits.keywordHits(), RRF_K, channelLimit)
+                .stream().map(RrfFuser.Hit::chunk).toList();
+        List<Evidence> evidences = new ArrayList<>(fused.size());
+        for (ScoredChunk chunk : fused) {
+            evidences.add(Evidence.from(chunk, titles.titleOf(chunk.documentId())));
+        }
+        Prompt prompt = promptBuilder.build(question, evidences);
+
+        long generationStarted = System.nanoTime();
+        GeneratedAnswer generated;
+        try {
+            generated = generator.generate(prompt);
+        } catch (ChatException e) {
+            // 服务故障与拒答是两件事:前者该重试/报警,后者是正确行为
+            return new QaAnswer(question, QaAnswer.Status.FAILED, "",
+                    List.of(), gate, null, List.of(), fused.size(), prompt.citations().size(),
+                    hits.anyDegraded(), 0, 0, retrievalMillis,
+                    (System.nanoTime() - generationStarted) / 1_000_000);
+        }
+
+        ParsedAnswer parsed = new CitationParser().parse(generated.text(), prompt);
+        EvidenceEvaluator.Verdict verdict = evaluator.verify(prompt, parsed, chatModel);
+        long generationMillis = (System.nanoTime() - generationStarted) / 1_000_000;
+
+        return new QaAnswer(question,
+                verdict.refuse() ? QaAnswer.Status.REFUSED : QaAnswer.Status.ANSWERED,
+                verdict.text(),
+                verdict.refuse() ? List.of() : parsed.citations(),
+                gate, verdict, parsed.unknownLabels(), fused.size(), prompt.citations().size(),
+                hits.anyDegraded(), generated.promptTokens(), generated.completionTokens(),
+                retrievalMillis, generationMillis);
+    }
+
+    private static QaAnswer refused(String question, EvidenceEvaluator.Gate gate,
+                                    HybridRetriever.HybridResult hits,
+                                    int promptTokens, int completionTokens, long retrievalMillis) {
+        return new QaAnswer(question, QaAnswer.Status.REFUSED, PromptBuilder.INSUFFICIENT,
+                List.of(), gate, null, List.of(), 0, 0, hits.anyDegraded(),
+                promptTokens, completionTokens, retrievalMillis, 0);
+    }
+}
