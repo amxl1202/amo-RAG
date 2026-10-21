@@ -83,3 +83,16 @@ CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_hnsw
     ON chunk_embeddings USING hnsw (embedding vector_cosine_ops);
 
 
+
+-- 用户表:单角色,角色字段留着是为了将来加管理员时不用改表
+-- password_hash 留 100:BCrypt 固定 60 字符,留余量给将来换 argon2(约 96)
+CREATE TABLE IF NOT EXISTS users (
+    id            BIGSERIAL PRIMARY KEY,
+    username      VARCHAR(64)  NOT NULL,
+    password_hash VARCHAR(100) NOT NULL,
+    role          VARCHAR(16)  NOT NULL DEFAULT 'USER',
+    created_at    TIMESTAMP    NOT NULL DEFAULT now(),
+
+    -- 用户名唯一:并发注册同一用户名时靠它兜底,而不是靠"先查再插"的间隙
+    CONSTRAINT uk_users_username UNIQUE (username)
+);

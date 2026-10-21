@@ -68,6 +68,13 @@ app:
     # 只看相似度会把这类问题误拒。
     min-vector-similarity: ${GENERATION_MIN_VECTOR_SIMILARITY:0.35}
     min-keyword-coverage: ${GENERATION_MIN_KEYWORD_COVERAGE:0.12}
+  # 认证:secret 从 .env 来。留空时启动即失败(JwtTokenProvider 构造器里检查),
+  # 而不是等到第一次登录才炸 —— 后者会让"服务起来了但没人能登录"拖延很久才被发现
+  auth:
+    secret: ${JWT_SECRET:}
+    # 2 小时。单角色演示形态下够用;真要上线应当缩短到 15~30 分钟并配 refresh 轮换
+    ttl-minutes: ${JWT_TTL_MINUTES:120}
+    issuer: ${JWT_ISSUER:amo-rag}
   retrieval:
     # 单通道超时:超过就降级为空列表,另一路照常用
     timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}

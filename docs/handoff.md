@@ -1,6 +1,6 @@
 # 接手文档（给下一个会话看）
 
-> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**176 个全绿，0 跳过**
+> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**195 个全绿，0 跳过**
 > 这份文件的目的：让任何一个新会话在 5 分钟内知道"现在在哪、下一步做什么、哪些坑别再踩"。
 > 它不替代 `PLAN.md`（那是完整计划），只做交接。
 
@@ -8,9 +8,10 @@
 
 ## 一句话现状
 
-链路**从上传到引用已经全通**：上传 → 解析 → 切片 → 落库 → 向量化 → 双通道检索 → RRF →
-门控 → 提示词 → 生成 → 引用解析 → 自检 → 拒答，每一环都有实测数字。
-**认证（D21–D22）与前端（D23–D25）还没做。**
+**L1 + L2 全部打通**：浏览器登录 → 上传 → 解析 → 切片 → 向量化 → 双通道检索 → RRF →
+门控 → 提示词 → 生成 → 引用解析 → 自检 → 拒答 → 点引用看原文。
+后端 195 个测试全绿，前端有 6 张真实截图在 `docs/screenshots/`。
+**剩下的是 L3（可选增强）与已登记的 P2 项。**
 
 ---
 
@@ -27,6 +28,12 @@ cd /d/rag-project
 
 # 3. 测试(真库用例会自动跳过:库没起时 6 个 skip,不是失败)
 ./scripts/mvn25.sh test
+
+# 3.5 前端(另开一个终端)
+cd web && npm install && npm run dev      # http://localhost:5173，/api 由 vite 代理到 8080
+
+# 3.6 端到端冒烟(认证 / 默认拒绝 / 检索 / 引用 / 拒答)
+scripts/demo-smoke.sh
 
 # 4. 检索层跑批(不花钱,可反复跑)
 java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
@@ -63,23 +70,27 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 | **D19 两阶段拒答** | 门控 + 逐句自检，阈值从评估集反推 | `007c7c3` |
 | **问答编排 + 跑批** | `QaService`、`AnswerEval`、校准表 | `afb4196` |
 | **D20 基线** | `docs/eval-baseline.md`、评估集 10 → 59 条 | 见 git log |
+| **D21–D22 认证** | JWT + 默认拒绝链 + 注册/登录 + BCrypt | 见 git log |
+| **D23–D25 前端** | Vue3 + Vite + Element Plus，答案带可点引用 | 见 git log |
 
 **库里现在有**：5 份文档、42 个切片、42 条 512 维向量（`text-embedding-v3`）。
 
 ---
 
-## 未完成：D21–D25
+## 认证与前端（已完成）
 
-| 天 | 任务 | 关键验收 |
-|----|------|---------|
-| D21 | `JwtTokenProvider` + `AuthFilter` + `SecurityConfig`（默认拒绝） | 无 token → 401 |
-| D22 | 注册/登录 + BCrypt | 登录拿到 token，密码不可逆 |
-| D23 | 前端脚手架 + 上传页 | 浏览器能上传并看到切片进度 |
-| D24 | 提问页 + 答案渲染（`marked` + `DOMPurify`） | 答案里的 `[E1]` 可点击 |
-| D25 | 引用点击定位原文 + 端到端联调 + 演示脚本 | 全流程走通 |
+| 天 | 做了什么 | 验收方式 |
+|----|---------|---------|
+| D21 | `JwtTokenProvider` + `JwtAuthFilter` + `SecurityConfig`（默认拒绝）+ `AuthProperties` | `SecurityChainTest` 7 条：无令牌 401、白名单放行、坏令牌 401、**不存在的路径也是 401**（证明拦它的是过滤器链而不是"接口不存在"） |
+| D22 | 注册/登录 + BCrypt + 唯一索引兜底并发 | `AuthServiceTest` 4 条 + `JwtTokenProviderTest` 8 条；登录失败不区分"用户不存在/密码错" |
+| D23–D25 | `web/`：登录 / 文档 / 问答三页；引用抽屉；`scripts/demo-smoke.sh` | 6 张截图见 `docs/screenshots/` |
 
-前端要注意的两点已经写进计划：`marked` 从 v5 起不自带净化，**必须过 DOMPurify**；
-答案里的编号实测会出现 `[ E1]`（多一个空格），渲染正则要容忍空白。
+**演示账号**：`demo` / `demo12345`（在开发库里，`scripts/demo-smoke.sh` 会自动注册或登录）。
+
+**前端的三个决定**
+1. **hash 路由**：history 模式要求后端把未命中路径回落到 index.html，那会毁掉"路径不存在就是 404"的语义。
+2. **答案先替换编号再 markdown，最后才 sanitize**：顺序反了会把自己插进去的 `<a>` 绕过净化。
+3. **编号正则容忍空白**：实测模型写 `[ E1]`，严格匹配会让编号点不开，而页面看起来完全正常。
 
 ---
 
@@ -125,6 +136,15 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
     现在门控返回 `CHANNELS_DOWN`，`QaService` 映射为 `FAILED`，跑批把降级的题从拒答指标里剔除。
 17. **`text_type` 在当前专属实例上不生效**（query 与 document 向量余弦 1.000000）。
     接口已按两侧拆开，但别声称它提升了指标；换实例后要重新抽检。
+18. **本机安全策略拒绝项目目录内的下载二进制读文件**：`esbuild.exe` 在 `D://rag-project//web//node_modules` 下
+    任何文件都读不了（`winapi error #5`），同一个二进制放到 `C://` 或 `D://` 根目录就正常。
+    表现是 `npm run dev` 报 `failed to load config ... Cannot read file "package.json"`。
+    解法：把 `node_modules` 物理放到 `C://Users//25161//AppData//Local//rag-web//node_modules`，
+    在 `web\` 下建 junction 指回去（`New-Item -ItemType Junction`）。
+    重新 `npm install` 会重建目录，若又报这个错，重做一次 junction。
+19. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
+    `@AutoConfigureMockMvc`，`TestRestTemplate` 也不在 `spring-boot-test` 里）。
+    所以认证的端到端验收用 `@SpringBootTest(RANDOM_PORT)` + JDK `HttpClient` 真打端口，没有引入新依赖。
 
 ---
 
