@@ -2,6 +2,7 @@ package com.ragkb.embedding;
 
 import com.ragkb.common.http.HttpPoster;
 import com.ragkb.common.http.JdkHttpPoster;
+import com.ragkb.common.http.RetryPolicy;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -94,7 +95,7 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
                 if (response.status() == 200) {
                     return parseResponse(response.body(), slice.size());
                 }
-                if (!isRetryableStatus(response.status())) {
+                if (!RetryPolicy.isRetryableStatus(response.status())) {
                     throw new EmbeddingException("向量化接口返回 " + response.status()
                             + ",属于不可重试的错误: " + abbreviate(response.body()), false);
                 }
@@ -111,7 +112,7 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
             } catch (Exception e) {
                 lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
             }
-            if (attempt < properties.maxAttempts() && !sleepBeforeRetry(attempt)) {
+            if (attempt < properties.maxAttempts() && !RetryPolicy.sleepBeforeRetry(attempt)) {
                 // 退避等待时被中断:直接退出,而不是"恢复了中断标志还继续发下一次请求"。
                 // 后者会让关闭/超时路径下多发一次外部调用,语义不可预期。
                 throw new EmbeddingException("向量化被中断", false);
@@ -195,26 +196,6 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
             current = current.get(key);
         }
         return current;
-    }
-
-    /** 429 是限流,值得退避重试;5xx 是服务端问题,也值得;4xx 其余是请求本身有问题,重试无用。 */
-    private static boolean isRetryableStatus(int status) {
-        return status == 429 || status >= 500;
-    }
-
-    /**
-     * 退避等待。
-     *
-     * @return true 表示可以继续重试;false 表示等待期间被中断,调用方应当直接放弃
-     */
-    private static boolean sleepBeforeRetry(int attempt) {
-        try {
-            Thread.sleep(200L * attempt);
-            return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
     }
 
     private static String abbreviate(String body) {

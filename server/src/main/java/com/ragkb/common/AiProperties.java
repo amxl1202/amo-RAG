@@ -1,6 +1,7 @@
 package com.ragkb.common;
 
 import com.ragkb.embedding.EmbeddingProperties;
+import com.ragkb.generation.ChatProperties;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -40,8 +41,36 @@ public class AiProperties {
     /** 失败重试总次数(含首次)。 */
     private int maxAttempts = 3;
 
+    /**
+     * 对话模型名。
+     *
+     * 与向量模型共用同一个 Key —— 百炼的专属实例里两者是一套凭据,
+     * 拆成两份配置只会让"换 Key 时改了一半"这种事故有发生的可能。
+     */
+    private String chatModel = ChatProperties.DEFAULT_MODEL;
+
+    /** OpenAI 兼容的 chat/completions 地址。专属实例通过环境变量覆盖,不写进仓库。 */
+    private String chatEndpoint = ChatProperties.DEFAULT_ENDPOINT;
+
+    /** 采样温度。生成层要"照材料说",温度不能高;但也不取 0,原因见 ChatProperties。 */
+    private double chatTemperature = 0.2;
+
+    /** 单次回答的 token 上限。 */
+    private int chatMaxTokens = 800;
+
+    /** 对话请求超时(秒)。比向量化宽松:生成是长输出,首字之后还要持续接收。 */
+    private int chatTimeoutSeconds = 60;
+
+    /** 对话请求失败重试总次数(含首次)。 */
+    private int chatMaxAttempts = 3;
+
     public EmbeddingProperties toEmbeddingProperties() {
         return new EmbeddingProperties(apiKey, model, dimension, batchSize,
                 endpoint, timeoutSeconds, maxAttempts);
+    }
+
+    public ChatProperties toChatProperties() {
+        return new ChatProperties(apiKey, chatModel, chatEndpoint, chatTemperature,
+                chatMaxTokens, chatTimeoutSeconds, chatMaxAttempts);
     }
 }

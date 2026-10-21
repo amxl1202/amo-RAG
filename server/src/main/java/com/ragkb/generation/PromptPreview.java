@@ -3,6 +3,7 @@ package com.ragkb.generation;
 import com.ragkb.chunk.ChunkDraft;
 import com.ragkb.chunk.StructureAwareChunkSplitter;
 import com.ragkb.chunk.TokenCounter;
+import com.ragkb.common.DotEnv;
 import com.ragkb.parse.DocumentParser;
 import com.ragkb.parse.DocxParser;
 import com.ragkb.parse.MarkdownParser;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 提示词预览:把一个文件的切片拼成提示词并打印出来。
@@ -51,10 +53,13 @@ public final class PromptPreview {
 
     public static void main(String[] args) throws IOException {
         String question = null;
+        boolean answerMode = false;
         List<String> files = new ArrayList<>();
         for (String arg : args) {
             if (arg.startsWith("--question=")) {
                 question = arg.substring("--question=".length());
+            } else if (arg.equals("--answer")) {
+                answerMode = true;
             } else {
                 files.add(arg);
             }
@@ -64,8 +69,8 @@ public final class PromptPreview {
             question = files.remove(files.size() - 1);
         }
         if (question == null || files.isEmpty()) {
-            System.err.println("用法: PromptPreview <文件...> \"问题\"");
-            System.err.println("  或: PromptPreview --question=\"问题\" <文件...>");
+            System.err.println("用法: PromptPreview [--answer] <文件...> \"问题\"");
+            System.err.println("  或: PromptPreview [--answer] --question=\"问题\" <文件...>");
             System.exit(2);
         }
 
@@ -74,6 +79,52 @@ public final class PromptPreview {
         Prompt prompt = new PromptBuilder(tokenCounter).build(question, ranked);
 
         print(prompt, ranked.size());
+        if (answerMode) {
+            printAnswer(prompt, tokenCounter);
+        }
+    }
+
+    /**
+     * 真的调一次模型。
+     *
+     * 配置从 {@code .env} 读(进程环境优先),与 Spring 容器里走的键同名 ——
+     * 用两套键名会出现"容器里能跑、命令行跑不通"这种最难查的差异。
+     */
+    private static void printAnswer(Prompt prompt, TokenCounter counter) {
+        Map<String, String> dotEnv = DotEnv.load(Path.of(".env"));
+        String apiKey = DotEnv.get(dotEnv, "DASHSCOPE_API_KEY", "");
+        if (apiKey.isBlank()) {
+            System.err.println("跳过生成:.env 里没有 DASHSCOPE_API_KEY");
+            return;
+        }
+        ChatProperties defaults = ChatProperties.defaults();
+        ChatProperties properties = new ChatProperties(
+                apiKey,
+                DotEnv.get(dotEnv, "CHAT_MODEL", defaults.model()),
+                DotEnv.get(dotEnv, "CHAT_ENDPOINT", defaults.endpoint()),
+                defaults.temperature(),
+                defaults.maxTokens(),
+                defaults.timeoutSeconds(),
+                defaults.maxAttempts());
+
+        System.out.println("---- 模型回答 ----");
+        try {
+            GeneratedAnswer answer = new AnswerGenerator(new DashScopeChatModel(properties)).generate(prompt);
+            System.out.println(answer.text());
+            System.out.printf("%n[用量] 输入 %d / 输出 %d token,耗时 %d ms,模型 %s,模型自述拒答=%s%n",
+                    answer.promptTokens(), answer.completionTokens(), answer.latencyMillis(),
+                    answer.model(), answer.refused());
+            int local = counter.count(prompt.systemPrompt()) + counter.count(prompt.userPrompt());
+            if (local > 0 && answer.promptTokens() > 0) {
+                // 两个数并排打出来:提示词预算用的是本地口径,而账单按实际口径算,
+                // 不知道倍率就没法判断"预算还剩多少"与"钱花在哪"
+                System.out.printf("[口径] 本地 cl100k 估计 %d,实际 %d,倍率 %.3f(实际 / 本地)%n",
+                        local, answer.promptTokens(), (double) answer.promptTokens() / local);
+            }
+        } catch (ChatException e) {
+            System.err.println("生成失败: " + e.getMessage() + "(可重试=" + e.retryable() + ")");
+        }
+        System.out.println("=".repeat(100));
     }
 
     /** 解析每个文件、切片、按问题词的命中数粗排。 */

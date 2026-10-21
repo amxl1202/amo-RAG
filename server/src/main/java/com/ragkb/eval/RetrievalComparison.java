@@ -1,5 +1,6 @@
 package com.ragkb.eval;
 
+import com.ragkb.common.DotEnv;
 import com.ragkb.embedding.DashScopeEmbeddingClient;
 import com.ragkb.embedding.EmbeddingClient;
 import com.ragkb.embedding.EmbeddingProperties;
@@ -12,8 +13,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,7 +51,7 @@ public final class RetrievalComparison {
     }
 
     public static void main(String[] args) throws IOException {
-        Map<String, String> dotEnv = loadDotEnv(DOT_ENV);
+        Map<String, String> dotEnv = DotEnv.load(DOT_ENV);
         Path casesPath = Path.of(args.length > 0 ? args[0] : DEFAULT_CASES.toString());
         EvalDataset dataset = EvalDataset.load(casesPath);
 
@@ -110,7 +109,7 @@ public final class RetrievalComparison {
         private VectorRetrieverHolder(EmbeddingClient client, JdbcTemplate jdbc, Map<String, String> env) {
             this.client = client;
             this.repository = client == null ? null
-                    : new JdbcVectorStoreRepository(jdbc, envOrDefault(env, "EMBEDDING_MODEL", "text-embedding-v3"));
+                    : new JdbcVectorStoreRepository(jdbc, DotEnv.get(env, "EMBEDDING_MODEL", "text-embedding-v3"));
         }
 
         private boolean available() {
@@ -124,16 +123,16 @@ public final class RetrievalComparison {
     }
 
     private static EmbeddingClient embeddingClient(Map<String, String> env) {
-        String apiKey = envOrDefault(env, "DASHSCOPE_API_KEY", "");
+        String apiKey = DotEnv.get(env, "DASHSCOPE_API_KEY", "");
         if (apiKey.isBlank()) {
             return null;
         }
         EmbeddingProperties properties = new EmbeddingProperties(
                 apiKey,
-                envOrDefault(env, "EMBEDDING_MODEL", EmbeddingProperties.DEFAULT_MODEL),
+                DotEnv.get(env, "EMBEDDING_MODEL", EmbeddingProperties.DEFAULT_MODEL),
                 512,
                 10,
-                envOrDefault(env, "EMBEDDING_ENDPOINT", EmbeddingProperties.DEFAULT_ENDPOINT),
+                DotEnv.get(env, "EMBEDDING_ENDPOINT", EmbeddingProperties.DEFAULT_ENDPOINT),
                 30, 3);
         return new DashScopeEmbeddingClient(properties);
     }
@@ -141,51 +140,10 @@ public final class RetrievalComparison {
     private static DriverManagerDataSource dataSource(Map<String, String> env) {
         DriverManagerDataSource dataSource = new DriverManagerDataSource();
         dataSource.setDriverClassName("org.postgresql.Driver");
-        dataSource.setUrl(envOrDefault(env, "DB_URL", "jdbc:postgresql://localhost:5433/rag_kb"));
-        dataSource.setUsername(envOrDefault(env, "DB_USERNAME", "postgres"));
-        dataSource.setPassword(envOrDefault(env, "DB_PASSWORD", "rag123456"));
+        dataSource.setUrl(DotEnv.get(env, "DB_URL", "jdbc:postgresql://localhost:5433/rag_kb"));
+        dataSource.setUsername(DotEnv.get(env, "DB_USERNAME", "postgres"));
+        dataSource.setPassword(DotEnv.get(env, "DB_PASSWORD", "rag123456"));
         return dataSource;
-    }
-
-    /** 进程环境优先,其次 .env —— 这样 CI 里 export 的变量能覆盖本地文件。 */
-    private static String envOrDefault(Map<String, String> dotEnv, String name, String fallback) {
-        String fromProcess = System.getenv(name);
-        if (fromProcess != null && !fromProcess.isBlank()) {
-            return fromProcess;
-        }
-        String fromFile = dotEnv.get(name);
-        return fromFile == null || fromFile.isBlank() ? fallback : fromFile;
-    }
-
-    private static Map<String, String> loadDotEnv(Path path) {
-        Map<String, String> values = new HashMap<>();
-        if (!Files.isRegularFile(path)) {
-            return values;
-        }
-        List<String> lines;
-        try {
-            lines = Files.readAllLines(path, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            // 读不了就当作没有 .env:CLI 应该退回到进程环境变量,而不是直接崩掉
-            return values;
-        }
-        for (String line : lines) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                continue;
-            }
-            int eq = trimmed.indexOf('=');
-            if (eq <= 0) {
-                continue;
-            }
-            String key = trimmed.substring(0, eq).trim();
-            String value = trimmed.substring(eq + 1).trim();
-            if (value.length() >= 2 && (value.startsWith("\"") && value.endsWith("\""))) {
-                value = value.substring(1, value.length() - 1);
-            }
-            values.put(key, value);
-        }
-        return values;
     }
 
     private static List<String> contents(List<ScoredChunk> hits) {

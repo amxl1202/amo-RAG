@@ -48,6 +48,20 @@ app:
       endpoint: ${EMBEDDING_ENDPOINT:https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding}
       timeout-seconds: ${EMBEDDING_TIMEOUT_SECONDS:30}
       max-attempts: ${EMBEDDING_MAX_ATTEMPTS:3}
+      # 对话模型。与向量模型共用 api-key:专属实例里两者是同一套凭据,
+      # 拆成两份配置只会让"换 Key 时改了一半"这种事有发生的可能。
+      # 温度取 0.2:生成层要照材料说,但 0 在长文本里容易陷入重复。
+      chat-model: ${CHAT_MODEL:qwen-plus}
+      chat-endpoint: ${CHAT_ENDPOINT:https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions}
+      chat-temperature: ${CHAT_TEMPERATURE:0.2}
+      chat-max-tokens: ${CHAT_MAX_TOKENS:800}
+      chat-timeout-seconds: ${CHAT_TIMEOUT_SECONDS:60}
+      chat-max-attempts: ${CHAT_MAX_ATTEMPTS:3}
+  # 生成策略:与供应商无关,换语料才需要动。
+  # 5 条 / 2000 token 的依据见 PromptBuilder.defaultLimits 的注释。
+  generation:
+    max-evidence: ${GENERATION_MAX_EVIDENCE:5}
+    max-context-tokens: ${GENERATION_MAX_CONTEXT_TOKENS:2000}
   retrieval:
     # 单通道超时:超过就降级为空列表,另一路照常用
     timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}
