@@ -58,8 +58,15 @@ public record EmbeddingProperties(
     }
 
     /**
-     * 从环境变量读取。没有 Key 时不报错 —— 构造配置和执行调用是两件事,
-     * 单元测试与离线工具都应该能在没有 Key 的情况下构造出对象。
+     * 从<b>进程环境变量</b>读取配置。
+     *
+     * 注意这里读的是 {@link System#getenv},<b>看不见 .env 文件</b>:spring-dotenv 只把 .env
+     * 注入 Spring 的属性占位符解析,不会写进进程环境(JVM 启动后进程环境本就不可变)。
+     * 所以这个方法只服务命令行工具与测试;Spring 容器内的装配应该走
+     * {@code @ConfigurationProperties(prefix = "app.ai.dashscope")},让 .env 里的值通过占位符生效。
+     *
+     * 没有 Key 时不报错 —— 构造配置和执行调用是两件事,单元测试与离线工具都应该能在没有 Key
+     * 的情况下构造出对象。
      */
     public static EmbeddingProperties fromEnvironment() {
         EmbeddingProperties base = defaults();

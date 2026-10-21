@@ -29,13 +29,14 @@ app:
     root: ${STORAGE_ROOT:./data/files}
   upload:
     max-size-mb: 50
-  # 向量化配置。dimension 必须与 schema.sql 里 vector(512) 一致,
-  # 不一致会在入库时失败,所以宁可在这里写死也不要让它"看起来可配"。
+  # 向量化配置。dimension 刻意<b>不</b>开放为环境变量:它和 schema.sql 里的 vector(512)
+  # 以及 CHECK (dim = 512) 强绑定,配成别的值只会在"调用已经花钱之后"才被数据库拦住。
+  # 要换维度就是一次迁移(改 DDL、重刷全量向量、重建 HNSW 索引),不是改配置。
   ai:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
       embedding-model: ${EMBEDDING_MODEL:text-embedding-v3}
-      embedding-dimension: ${EMBEDDING_DIMENSION:512}
+      embedding-dimension: 512
       embedding-batch-size: ${EMBEDDING_BATCH_SIZE:10}
       timeout-seconds: ${EMBEDDING_TIMEOUT_SECONDS:30}
       max-attempts: ${EMBEDDING_MAX_ATTEMPTS:3}
