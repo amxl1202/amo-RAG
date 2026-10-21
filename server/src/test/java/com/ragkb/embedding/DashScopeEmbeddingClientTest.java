@@ -1,5 +1,6 @@
 package com.ragkb.embedding;
 
+import com.ragkb.common.http.HttpPoster;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

@@ -1,5 +1,7 @@
 package com.ragkb.embedding;
 
+import com.ragkb.common.http.HttpPoster;
+import com.ragkb.common.http.JdkHttpPoster;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 

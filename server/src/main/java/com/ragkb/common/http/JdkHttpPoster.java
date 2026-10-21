@@ -1,4 +1,4 @@
-package com.ragkb.embedding;
+package com.ragkb.common.http;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -11,8 +11,8 @@ import java.util.Map;
 /**
  * 用 JDK 自带的 HttpClient 发送请求。
  *
- * 不用 Spring 的 RestClient,是因为向量化这一层要保持"脱离框架也能跑" ——
- * 解析、切片、向量化都不依赖 Spring,才能在命令行工具里单独验证。
+ * 不用 Spring 的 RestClient,是因为调用模型接口的这一层要保持"脱离框架也能跑" ——
+ * 向量化、生成、评估跑批都要能在命令行工具与单元测试里单独验证。
  */
 public class JdkHttpPoster implements HttpPoster {
 
