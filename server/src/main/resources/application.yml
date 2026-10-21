@@ -62,6 +62,12 @@ app:
   generation:
     max-evidence: ${GENERATION_MAX_EVIDENCE:5}
     max-context-tokens: ${GENERATION_MAX_CONTEXT_TOKENS:2000}
+    # 阶段一拒答的两个阈值。必须由评估集反推,改它们等于改"何时拒答",
+    # 必须重跑 docs/eval-baseline.md 的拒答准确率与误拒率。
+    # 两者是"或"的关系:任一条达标就不拒 —— 中文技术语料里专有名词靠字面命中,
+    # 只看相似度会把这类问题误拒。
+    min-vector-similarity: ${GENERATION_MIN_VECTOR_SIMILARITY:0.45}
+    min-keyword-coverage: ${GENERATION_MIN_KEYWORD_COVERAGE:0.5}
   retrieval:
     # 单通道超时:超过就降级为空列表,另一路照常用
     timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}

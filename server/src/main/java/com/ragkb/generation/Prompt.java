@@ -15,6 +15,9 @@ import java.util.Optional;
  * @param question       用户问题原文
  * @param systemPrompt   系统提示词
  * @param userPrompt     用户提示词(含编号材料)
+ * @param material       材料段原文(不含问题)。自检要把材料单独再发一次,
+ *                       从这里取而不是从 userPrompt 里切字符串 —— 切字符串的代码
+ *                       在提示词格式改动时会静默切错
  * @param citations      编号表,按提示词里的出现顺序
  * @param contextTokens  材料段的 token 数(本地口径,偏高;见 TokenCounter 的校准说明)
  * @param droppedCount   因超出预算而没有放进提示词的证据条数
@@ -23,6 +26,7 @@ public record Prompt(
         String question,
         String systemPrompt,
         String userPrompt,
+        String material,
         List<Citation> citations,
         int contextTokens,
         int droppedCount) {

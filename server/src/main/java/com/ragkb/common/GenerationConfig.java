@@ -4,6 +4,7 @@ import com.ragkb.chunk.TokenCounter;
 import com.ragkb.generation.AnswerGenerator;
 import com.ragkb.generation.ChatModel;
 import com.ragkb.generation.DashScopeChatModel;
+import com.ragkb.generation.EvidenceEvaluator;
 import com.ragkb.generation.PromptBuilder;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -35,5 +36,11 @@ public class GenerationConfig {
     @Bean
     public AnswerGenerator answerGenerator(ChatModel chatModel) {
         return new AnswerGenerator(chatModel);
+    }
+
+    /** 两阶段拒答。阈值来自配置:改阈值等于改行为,必须能一眼看到、也必须随评估一起改。 */
+    @Bean
+    public EvidenceEvaluator evidenceEvaluator(GenerationProperties properties) {
+        return new EvidenceEvaluator(properties.toThresholds());
     }
 }

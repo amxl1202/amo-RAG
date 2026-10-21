@@ -65,6 +65,7 @@ public class CitationParser {
         StringBuilder sanitized = new StringBuilder(answer.length());
 
         StringBuilder raw = new StringBuilder();
+        StringBuilder display = new StringBuilder();
         StringBuilder plain = new StringBuilder();
         List<Citation> sentenceCitations = new ArrayList<>();
         boolean sentenceHasUnknown = false;
@@ -90,6 +91,7 @@ public class CitationParser {
                     }
                 }
                 if (allKnown) {
+                    display.append(answer, i, marker.end());
                     for (Citation citation : resolved) {
                         if (sentenceCitations.stream()
                                 .noneMatch(existing -> existing.label().equalsIgnoreCase(citation.label()))) {
@@ -105,16 +107,17 @@ public class CitationParser {
 
             char c = answer.charAt(i);
             raw.append(c);
+            display.append(c);
             plain.append(c);
             sanitized.append(c);
             i++;
             if (isSentenceEnd(answer, i - 1, c)) {
-                flush(sentences, raw, plain, sentenceCitations, sentenceHasUnknown);
+                flush(sentences, raw, display, plain, sentenceCitations, sentenceHasUnknown);
                 sentenceCitations = new ArrayList<>();
                 sentenceHasUnknown = false;
             }
         }
-        flush(sentences, raw, plain, sentenceCitations, sentenceHasUnknown);
+        flush(sentences, raw, display, plain, sentenceCitations, sentenceHasUnknown);
 
         int uncited = (int) sentences.stream()
                 .filter(sentence -> !sentence.blank() && !sentence.cited())
@@ -185,13 +188,14 @@ public class CitationParser {
         return c == '.' && (index + 1 == text.length() || Character.isWhitespace(text.charAt(index + 1)));
     }
 
-    private static void flush(List<ParsedSentence> sentences, StringBuilder raw, StringBuilder plain,
-                              List<Citation> citations, boolean hasUnknown) {
+    private static void flush(List<ParsedSentence> sentences, StringBuilder raw, StringBuilder display,
+                              StringBuilder plain, List<Citation> citations, boolean hasUnknown) {
         if (raw.isEmpty()) {
             return;
         }
-        sentences.add(new ParsedSentence(raw.toString(), plain.toString(), citations, hasUnknown));
+        sentences.add(new ParsedSentence(display.toString(), plain.toString(), citations, hasUnknown));
         raw.setLength(0);
+        display.setLength(0);
         plain.setLength(0);
     }
 }

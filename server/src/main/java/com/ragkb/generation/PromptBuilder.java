@@ -126,7 +126,7 @@ public class PromptBuilder {
         }
 
         String userPrompt = renderUserPrompt(body.toString(), question);
-        return new Prompt(question, systemPrompt(), userPrompt, citations,
+        return new Prompt(question, systemPrompt(), userPrompt, body.toString(), citations,
                 tokenCounter.count(body.toString()), dropped);
     }
 
