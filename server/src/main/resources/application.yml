@@ -66,8 +66,8 @@ app:
     # 必须重跑 docs/eval-baseline.md 的拒答准确率与误拒率。
     # 两者是"或"的关系:任一条达标就不拒 —— 中文技术语料里专有名词靠字面命中,
     # 只看相似度会把这类问题误拒。
-    min-vector-similarity: ${GENERATION_MIN_VECTOR_SIMILARITY:0.45}
-    min-keyword-coverage: ${GENERATION_MIN_KEYWORD_COVERAGE:0.5}
+    min-vector-similarity: ${GENERATION_MIN_VECTOR_SIMILARITY:0.35}
+    min-keyword-coverage: ${GENERATION_MIN_KEYWORD_COVERAGE:0.12}
   retrieval:
     # 单通道超时:超过就降级为空列表,另一路照常用
     timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}

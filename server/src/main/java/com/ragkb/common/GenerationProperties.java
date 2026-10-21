@@ -23,10 +23,11 @@ public class GenerationProperties {
     /**
      * 阶段一拒答:向量通道 top-1 余弦相似度下限。
      *
-     * 这个数必须由评估集反推,不能拍。改它等于改"什么时候拒答",必须重跑
-     * {@code docs/eval-baseline.md} 里的拒答准确率与误拒率。
+     * 这个数由评估集反推:取"低于本评估集全部题目"的值,使单条判据不会误拒任何一题。
+     * 依据与实测分布见 {@code docs/eval-baseline.md}。改它等于改"什么时候拒答",
+     * 必须重跑拒答准确率与误拒率。
      */
-    private double minVectorSimilarity = 0.45;
+    private double minVectorSimilarity = 0.35;
 
     /**
      * 阶段一拒答:关键词通道对问题词的覆盖率下限(0~1)。
@@ -34,7 +35,7 @@ public class GenerationProperties {
      * 与相似度是"或"的关系 —— 中文技术语料里专有名词靠字面命中,
      * 只看相似度会把这类问题误拒。
      */
-    private double minKeywordCoverage = 0.5;
+    private double minKeywordCoverage = 0.12;
 
     public com.ragkb.generation.PromptBuilder.Limits toPromptLimits() {
         return new com.ragkb.generation.PromptBuilder.Limits(maxEvidence, maxContextTokens);

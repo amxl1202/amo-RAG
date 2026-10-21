@@ -2,69 +2,516 @@
   {
     "id": "c01",
     "question": "固定长度切分的根本问题是什么？",
-    "expectedKeywords": ["不知道文本里哪一处是断点"],
+    "expectedKeywords": [
+      "不知道文本里哪一处是断点"
+    ],
     "type": "FACTOID",
     "shouldRefuse": false
   },
   {
     "id": "c02",
     "question": "HNSW 与 IVFFlat 的核心差别在哪里？",
-    "expectedKeywords": ["是否需要训练"],
+    "expectedKeywords": [
+      "是否需要训练"
+    ],
     "type": "FACTOID",
     "shouldRefuse": false
   },
   {
     "id": "c03",
     "question": "重叠量控制在什么范围较为稳妥？",
-    "expectedKeywords": ["百分之十五到二十五"],
+    "expectedKeywords": [
+      "百分之十五到二十五"
+    ],
     "type": "FACTOID",
     "shouldRefuse": false
   },
   {
     "id": "c04",
     "question": "拒答阈值为什么应当偏保守？",
-    "expectedKeywords": ["编造更难被发现"],
+    "expectedKeywords": [
+      "编造更难被发现"
+    ],
     "type": "FACTOID",
     "shouldRefuse": false
   },
   {
     "id": "c05",
     "question": "混合检索里两路分数为什么不能直接相加，要怎么绕开？",
-    "expectedKeywords": ["量纲完全不同", "归一化"],
-    "type": "MULTI_HOP",
+    "expectedKeywords": [
+      "量纲完全不同",
+      "归一化"
+    ],
+    "type": "FACTOID",
     "shouldRefuse": false
   },
   {
     "id": "c06",
     "question": "两条检索通道各自擅长什么情况？",
-    "expectedKeywords": ["语义相近但用词不同", "精确匹配"],
-    "type": "MULTI_HOP",
+    "expectedKeywords": [
+      "语义相近但用词不同",
+      "精确匹配"
+    ],
+    "type": "FACTOID",
     "shouldRefuse": false
   },
   {
     "id": "c07",
     "question": "HNSW 的 m 参数越大意味着什么？",
-    "expectedKeywords": ["出边数", "召回越高"],
+    "expectedKeywords": [
+      "出边数",
+      "召回越高"
+    ],
     "type": "TABLE_VALUE",
     "shouldRefuse": false
   },
   {
     "id": "c08",
     "question": "融合环节的 k 取零会导致什么？",
-    "expectedKeywords": ["第一名过度主导"],
+    "expectedKeywords": [
+      "第一名过度主导"
+    ],
     "type": "TABLE_VALUE",
     "shouldRefuse": false
   },
   {
-    "id": "c09",
+    "id": "c11",
+    "question": "按结构切分为什么能让每个切片自带上下文？",
+    "expectedKeywords": [
+      "标题向下归属于它引领的正文"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c12",
+    "question": "重叠区间最初是为了解决什么问题？",
+    "expectedKeywords": [
+      "答案恰好横跨两个切片"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c13",
+    "question": "重叠过大时检索结果会变成什么样？",
+    "expectedKeywords": [
+      "挤占了真正有用的候选位置"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c14",
+    "question": "重叠带来的成本体现在哪两处？",
+    "expectedKeywords": [
+      "入库时间和存储成本随之增加"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c15",
+    "question": "IVFFlat 在什么情况下召回率会明显下降？",
+    "expectedKeywords": [
+      "数据量少或分布变化时召回率会明显下降"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c16",
+    "question": "HNSW 用起来要付出什么代价？",
+    "expectedKeywords": [
+      "构建更慢、内存占用更大"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c17",
+    "question": "为什么持续增量入库的知识库更看重 HNSW 的免训练特性？",
+    "expectedKeywords": [
+      "免训练特性比构建速度更重要"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c18",
+    "question": "余弦距离与欧氏距离分别衡量什么？",
+    "expectedKeywords": [
+      "余弦距离衡量方向，欧氏距离衡量绝对位置"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c19",
+    "question": "文本向量的模长携带语义信息吗？",
+    "expectedKeywords": [
+      "模长往往不携带语义信息"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c20",
+    "question": "向量归一化之后，余弦距离与欧氏距离的排序有什么关系？",
+    "expectedKeywords": [
+      "余弦距离与欧氏距离的排序结果一致"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c21",
+    "question": "纯向量检索擅长什么样的情形？",
+    "expectedKeywords": [
+      "防止模型胡说"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c22",
+    "question": "纯关键词检索擅长匹配哪一类字符串？",
+    "expectedKeywords": [
+      "产品型号、错误码、专有名词"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c23",
+    "question": "全文检索的排名分数有什么特点，导致它不能与相似度相加？",
+    "expectedKeywords": [
+      "排名分数没有固定上界"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c24",
+    "question": "倒排融合用什么代替分数来排序？",
+    "expectedKeywords": [
+      "只使用每条候选在各通道中的排名位置"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c25",
+    "question": "倒排融合为什么在工程上比加权求和更省心？",
+    "expectedKeywords": [
+      "分数尺度的差异因此被完全消除"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c26",
+    "question": "上下文里的引用编号应该由谁产生？",
+    "expectedKeywords": [
+      "引用编号必须由系统生成"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c27",
+    "question": "生成后校验发现模型提到不存在的编号，该怎么处理？",
+    "expectedKeywords": [
+      "一律剔除或整段重答"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c28",
+    "question": "拒答阈值定得太高会导致什么后果？",
+    "expectedKeywords": [
+      "它会开始用通用知识"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c29",
+    "question": "两种错误相比，为什么拒答阈值应当偏保守？",
+    "expectedKeywords": [
+      "宁可多拒几次"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c30",
+    "question": "为什么只靠相似度阈值判定证据是否充分并不够？",
+    "expectedKeywords": [
+      "相似度高的切片可能只是用词接近而主题无关"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c31",
+    "question": "模型判断与程序判断这两路结论最后怎么合并？",
+    "expectedKeywords": [
+      "由程序合并这两路结论"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c32",
+    "question": "参数速查表里 max 的定义是什么？",
+    "expectedKeywords": [
+      "硬上限，超过即为缺陷"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c33",
+    "question": "参数速查表里融合的 k 指的是什么？",
+    "expectedKeywords": [
+      "排名平滑常数"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c34",
+    "question": "参数速查表里 m 越大除了召回之外还会带来什么？",
+    "expectedKeywords": [
+      "内存越多"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c35",
+    "question": "项目的目标怎么用一句话说清？",
+    "expectedKeywords": [
+      "每句话都能追溯到原文"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c36",
+    "question": "范围内要支持哪几种文档格式的解析？",
+    "expectedKeywords": [
+      "多格式解析：PDF / DOCX / MD / TXT"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c37",
+    "question": "为什么第一版不做分片上传与秒传？",
+    "expectedKeywords": [
+      "单文件 ≤50MB 的场景下是纯负担"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c38",
+    "question": "为什么不用 Elasticsearch 做关键词通道？",
+    "expectedKeywords": [
+      "先用 PostgreSQL 全文检索替代"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c39",
+    "question": "不引入对象存储的理由是什么？将来要换 MinIO 需要改多少代码？",
+    "expectedKeywords": [
+      "将来要换 MinIO/S3，只加一个实现类"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c40",
+    "question": "换存储实现不用改业务代码，这体现的是哪个设计原则？",
+    "expectedKeywords": [
+      "依赖倒置"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c41",
+    "question": "认证用的 JWT 签名算法是什么？",
+    "expectedKeywords": [
+      "HMAC-SHA256"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c42",
+    "question": "密码用什么算法存储？",
+    "expectedKeywords": [
+      "BCrypt"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c43",
+    "question": "前端的技术栈是什么？",
+    "expectedKeywords": [
+      "Vue 3 + Vite + Element Plus + Pinia"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c44",
+    "question": "Markdown 渲染为什么必须过 DOMPurify？",
+    "expectedKeywords": [
+      "从 v5 起不再自带净化"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c45",
+    "question": "里程碑 M3 的交付物是什么？",
+    "expectedKeywords": [
+      "三通道结果对比 + RRF 实验记录"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c46",
+    "question": "按每天三到四小时算，M0 到 M5 大约要多久？",
+    "expectedKeywords": [
+      "M0–M5 约 15 天"
+    ],
+    "type": "TABLE_VALUE",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c47",
+    "question": "工程约定里对注释的要求是什么？",
+    "expectedKeywords": [
+      "不写注释解释"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c48",
+    "question": "什么情况下不允许开工？",
+    "expectedKeywords": [
+      "没有验收标准的板块不开工"
+    ],
+    "type": "FACTOID",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c59",
+    "question": "重叠量的取值范围与拒答阈值的取向，为什么都不能照抄现成数字？",
+    "expectedKeywords": [
+      "百分之十五到二十五",
+      "宁可多拒几次"
+    ],
+    "type": "MULTI_HOP",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c60",
+    "question": "为什么向量与关键词两条通道都要保留，而它们的结果又不能直接相加？",
+    "expectedKeywords": [
+      "防止模型胡说",
+      "排名分数没有固定上界"
+    ],
+    "type": "MULTI_HOP",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c61",
+    "question": "既要让切片自带上下文，又要避免相邻片信息断裂，文档给了哪两件事？",
+    "expectedKeywords": [
+      "标题向下归属于它引领的正文",
+      "挤占了真正有用的候选位置"
+    ],
+    "type": "MULTI_HOP",
+    "shouldRefuse": false
+  },
+  {
+    "id": "c49",
     "question": "这份文档里提到的服务器型号是什么？",
     "expectedKeywords": [],
     "type": "OUT_OF_SCOPE",
     "shouldRefuse": true
   },
   {
-    "id": "c10",
+    "id": "c50",
     "question": "作者的联系邮箱是多少？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c51",
+    "question": "服务器有多少个 CPU 核心？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c52",
+    "question": "这个项目的总预算是多少？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c53",
+    "question": "团队里负责前端的人是谁？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c54",
+    "question": "系统最多支持多少并发用户？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c55",
+    "question": "服务部署在哪个 Kubernetes 集群？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c56",
+    "question": "接口的 QPS 上限是多少？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c57",
+    "question": "HNSW 的 ef_search 推荐取值是多少？",
+    "expectedKeywords": [],
+    "type": "OUT_OF_SCOPE",
+    "shouldRefuse": true
+  },
+  {
+    "id": "c58",
+    "question": "这个项目采用的开源许可证是哪一种？",
     "expectedKeywords": [],
     "type": "OUT_OF_SCOPE",
     "shouldRefuse": true

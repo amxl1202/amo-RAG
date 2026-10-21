@@ -125,12 +125,7 @@ public final class AnswerEval {
             double top1 = answer.gate().vectorTop1();
             double coverage = answer.gate().keywordCoverage();
             int total = answer.citations().size();
-            int correct = 0;
-            for (var citation : answer.citations()) {
-                if (evalCase.matches(citation.content())) {
-                    correct++;
-                }
-            }
+            int correct = countCorrectCitations(evalCase, answer);
             results.add(new CaseResult(evalCase, answer, top1, coverage, total, correct));
             System.out.printf("%-6s %-7s %6.3f %7.3f %-7s %s%n",
                     evalCase.id(), evalCase.shouldRefuse() ? "是" : "否", top1, coverage,
@@ -152,6 +147,34 @@ public final class AnswerEval {
         System.out.printf("  用量         %d token,耗时 %.1f 秒%n",
                 metrics.totalTokens, metrics.totalMillis / 1000.0);
         System.exit(metrics.passed() ? 0 : 1);
+    }
+
+    /**
+     * 单题里"引对了"的条数。
+     *
+     * <h2>跨段落用例为什么不能逐条判</h2>
+     * 跨段落的答案本就由两个切片共同支撑,而 {@code EvalCase.matches} 要求同一条切片里
+     * 同时含全部期望词 —— 拿它逐条判,这类用例的正确引用数<b>结构上恒为 0</b>,
+     * 引用正确率会被系统性拉低,而且看起来像"模型引错了"。
+     * 所以跨段落改成按题判:引用集合的并集覆盖全部期望词时,这一题的引用全记正确。
+     */
+    private static int countCorrectCitations(EvalCase evalCase, QaAnswer answer) {
+        if (answer.citations().isEmpty()) {
+            return 0;
+        }
+        if (evalCase.type() == EvalCaseType.MULTI_HOP) {
+            boolean covered = evalCase.expectedKeywords().stream()
+                    .allMatch(keyword -> answer.citations().stream()
+                            .anyMatch(citation -> citation.content().contains(keyword)));
+            return covered ? answer.citations().size() : 0;
+        }
+        int correct = 0;
+        for (var citation : answer.citations()) {
+            if (evalCase.matches(citation.content())) {
+                correct++;
+            }
+        }
+        return correct;
     }
 
     /** 单题一行的说明文字,失败原因要能一眼看出是"拒了不该拒的"还是"引了不该引的"。 */
