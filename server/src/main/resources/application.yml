@@ -1,6 +1,11 @@
 spring:
   application:
     name: ragkb-server
+  config:
+    # 用 Spring Boot 自带的配置导入读 .env,不依赖 spring-dotenv。
+    # [.properties] 指定按 properties 格式解析;optional: 让文件缺失时不阻断启动
+    # (CI 与别人克隆仓库时没有 .env,应当照常能起)。
+    import: optional:file:.env[.properties]
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/rag_kb}
     username: ${DB_USERNAME:postgres}
@@ -35,8 +40,16 @@ app:
   ai:
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
-      embedding-model: ${EMBEDDING_MODEL:text-embedding-v3}
-      embedding-dimension: 512
-      embedding-batch-size: ${EMBEDDING_BATCH_SIZE:10}
+      model: ${EMBEDDING_MODEL:text-embedding-v3}
+      # 维度与 schema.sql 的 vector(512) / CHECK(dim = 512) 强绑定,不开放为环境变量
+      dimension: 512
+      batch-size: ${EMBEDDING_BATCH_SIZE:10}
+      # 默认公共 DashScope;专属实例(百炼 MaaS)用 EMBEDDING_ENDPOINT 覆盖,别把实例地址写进仓库
+      endpoint: ${EMBEDDING_ENDPOINT:https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding}
       timeout-seconds: ${EMBEDDING_TIMEOUT_SECONDS:30}
       max-attempts: ${EMBEDDING_MAX_ATTEMPTS:3}
+  retrieval:
+    # 单通道超时:超过就降级为空列表,另一路照常用
+    timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}
+    # ILIKE / TRGM。对比实验显示两者在当前语料上无差异,TRGM 的候选集是 ILIKE 的超集
+    keyword-mode: ${KEYWORD_MODE:TRGM}

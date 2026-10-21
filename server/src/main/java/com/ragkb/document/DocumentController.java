@@ -22,6 +22,7 @@ public class DocumentController {
     private final DocumentService documentService;
     private final DocumentMapper documentMapper;
     private final IngestService ingestService;
+    private final VectorizeService vectorizeService;
 
     @PostMapping
     public ApiResponse<DocumentView> upload(@RequestParam("file") MultipartFile file) {
@@ -42,6 +43,17 @@ public class DocumentController {
     @PostMapping("/{id}/ingest")
     public ApiResponse<IngestService.IngestResult> ingest(@PathVariable Long id) {
         return ApiResponse.ok(ingestService.ingest(id));
+    }
+
+    /**
+     * 向量化该文档的切片。
+     *
+     * 需要 DASHSCOPE_API_KEY:这一步会真的调用外部接口。同步返回用量,
+     * 便于核对成本 —— 向量化是唯一按 token 计费的步骤,不该只回一个"已提交"。
+     */
+    @PostMapping("/{id}/vectorize")
+    public ApiResponse<VectorizeService.VectorizeResult> vectorize(@PathVariable Long id) {
+        return ApiResponse.ok(vectorizeService.vectorize(id));
     }
 
     @GetMapping

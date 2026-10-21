@@ -1,83 +1,92 @@
 package com.ragkb.eval;
 
+import com.ragkb.embedding.DashScopeEmbeddingClient;
+import com.ragkb.embedding.EmbeddingClient;
+import com.ragkb.embedding.EmbeddingProperties;
 import com.ragkb.retrieval.JdbcKeywordRetriever;
 import com.ragkb.retrieval.RrfFuser;
+import com.ragkb.vector.JdbcVectorStoreRepository;
 import com.ragkb.vector.ScoredChunk;
+import com.ragkb.vector.VectorStoreRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
  * 检索方案对比:同一份评估集上跑多组配置,输出一张对比表。
  *
- * <h2>为什么对比可以只靠关键词通道</h2>
- * 向量通道需要调外部接口(要 API Key,且按量计费)。在 Key 就绪之前,用
- * <b>ILIKE 与 TRGM 两种关键词模式充当"两路"</b>来做融合实验 —— 它们候选集不同、
- * 排序依据也不同,足以验证 RRF 的机制与 k 的取值影响。
- * 等向量可用时,把其中一路换成向量检索即可,融合代码不用改。
+ * <h2>为什么这个 CLI 自己读 .env</h2>
+ * Spring 的 {@code spring.config.import} 只在容器里生效,命令行工具读的是进程环境。
+ * 不在命令行里读一遍,使用者就得先 export 一堆变量才能跑 —— 这层摩擦会让人干脆不跑评估。
+ * 这里做最小解析:只支持 {@code KEY=VALUE} 与 {@code #} 注释。
+ *
+ * <h2>为什么要缓存问题的向量</h2>
+ * 同一份评估集会跑 6 组配置,每组都要把同样的 8 个问题向量化一遍 —— 不缓存就是 48 次调用、
+ * 6 倍成本。缓存只对"离线跑批"成立:线上每次提问都是新文本,没有可缓存的重复。
  *
  * <h2>这张表怎么读</h2>
  * <ul>
  *   <li>recall@5 与 recall@20 的差距反映排序质量:能找到但排不上去,差距就大;</li>
  *   <li>MRR 比 recall 更敏感于"排得靠不靠前";</li>
- *   <li>失败数看的是"前 20 位都没命中"的用例条数 —— 它比百分比更直观。</li>
+ *   <li>失败数是"前 20 位都没命中"的用例条数,比百分比更直观。</li>
  * </ul>
  */
 public final class RetrievalComparison {
 
+    private static final Path DEFAULT_CASES = Path.of("samples", "eval", "cases.json");
+    private static final Path DOT_ENV = Path.of(".env");
+
     private RetrievalComparison() {
     }
 
-    /**
-     * 一组待对比的配置。
-     *
-     * @param name     表里显示的名字
-     * @param retriever 从"问题 + 条数"到片段正文的适配器
-     */
     private record Config(String name, BiFunction<String, Integer, List<String>> retriever) {
     }
 
-    public static void main(String[] args) throws Exception {
-        var casesPath = java.nio.file.Path.of(args.length > 0 ? args[0] : "samples/eval/cases.json");
+    public static void main(String[] args) throws IOException {
+        Map<String, String> dotEnv = loadDotEnv(DOT_ENV);
+        Path casesPath = Path.of(args.length > 0 ? args[0] : DEFAULT_CASES.toString());
         EvalDataset dataset = EvalDataset.load(casesPath);
 
-        // 用 DriverManagerDataSource 而不是 PGSimpleDataSource:JDBC 驱动是 runtime scope,
-        // 主代码在编译期看不到 org.postgresql.* 包。按类名加载即可。
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName("org.postgresql.Driver");
-        dataSource.setUrl(env("DB_URL", "jdbc:postgresql://localhost:5433/rag_kb"));
-        dataSource.setUsername(env("DB_USERNAME", "postgres"));
-        dataSource.setPassword(env("DB_PASSWORD", "rag123456"));
-        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource(dotEnv));
         JdbcKeywordRetriever ilike = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.ILIKE);
         JdbcKeywordRetriever trgm = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.TRGM);
         RrfFuser fuser = new RrfFuser();
 
+        EmbeddingClient embeddingClient = embeddingClient(dotEnv);
+        VectorRetrieverHolder vector = new VectorRetrieverHolder(embeddingClient, jdbc, dotEnv);
+        boolean vectorReady = embeddingClient != null && vector.available();
+
         List<Config> configs = new ArrayList<>();
         configs.add(new Config("ILIKE", (q, limit) -> contents(ilike.search(q, limit))));
         configs.add(new Config("TRGM", (q, limit) -> contents(trgm.search(q, limit))));
-        for (int k : new int[]{0, 20, 60}) {
-            configs.add(new Config("RRF k=" + k, (q, limit) -> {
-                // 每路多取一些再融合:融合前给的名次太少,RRF 没有区分的余地
-                List<ScoredChunk> left = ilike.search(q, limit * 2);
-                List<ScoredChunk> right = trgm.search(q, limit * 2);
-                return fuser.fuse(left, right, k, limit).stream()
-                        .map(hit -> hit.chunk().content())
-                        .toList();
-            }));
+        if (vectorReady) {
+            configs.add(new Config("VECTOR", (q, limit) -> contents(vector.search(q, limit))));
+            for (int k : new int[]{0, 20, 60}) {
+                configs.add(new Config("HYBRID k=" + k, (q, limit) -> {
+                    List<ScoredChunk> left = vector.search(q, limit * 2);
+                    List<ScoredChunk> right = trgm.search(q, limit * 2);
+                    return fuser.fuse(left, right, k, limit).stream()
+                            .map(hit -> hit.chunk().content())
+                            .toList();
+                }));
+            }
         }
 
-        System.out.printf("%-12s %10s %11s %8s %8s%n", "方案", "recall@5", "recall@20", "MRR", "失败数");
-        System.out.println("-".repeat(54));
+        System.out.printf("%-14s %10s %11s %8s %8s%n", "方案", "recall@5", "recall@20", "MRR", "失败数");
+        System.out.println("-".repeat(56));
         EvalRunner runner = new EvalRunner();
         for (Config config : configs) {
-            EvalRunner.Retriever adapter = config.retriever()::apply;
-            EvalReport report = runner.run(dataset, adapter, config.name());
-            System.out.printf("%-12s %10.4f %11.4f %8.4f %8d%n",
+            EvalReport report = runner.run(dataset, config.retriever()::apply, config.name());
+            System.out.printf("%-14s %10.4f %11.4f %8.4f %8d%n",
                     config.name(),
                     report.retrieval().recallAt5(),
                     report.retrieval().recallAt20(),
@@ -87,16 +96,99 @@ public final class RetrievalComparison {
         System.out.println();
         System.out.println("用例数 " + dataset.cases().size()
                 + "(参与召回 " + dataset.evaluableCount() + ",文档外 " + dataset.refusalCaseCount() + ")");
-        System.err.println("说明:向量通道需要 DASHSCOPE_API_KEY,当前用 ILIKE/TRGM 两路代替做融合实验;"
-                + "向量可用后把其中一路换成 VectorRetriever 即可,融合代码不变。");
+        if (!vectorReady) {
+            System.err.println("向量通道未启用:缺 DASHSCOPE_API_KEY,或库里没有当前模型的向量。");
+        }
+    }
+
+    /** 向量检索 + 问题向量缓存。包一层是因为 VectorRetriever 每次都会真的调接口。 */
+    private static final class VectorRetrieverHolder {
+        private final EmbeddingClient client;
+        private final VectorStoreRepository repository;
+        private final Map<String, float[]> cache = new HashMap<>();
+
+        private VectorRetrieverHolder(EmbeddingClient client, JdbcTemplate jdbc, Map<String, String> env) {
+            this.client = client;
+            this.repository = client == null ? null
+                    : new JdbcVectorStoreRepository(jdbc, envOrDefault(env, "EMBEDDING_MODEL", "text-embedding-v3"));
+        }
+
+        private boolean available() {
+            return repository != null && repository.count() > 0;
+        }
+
+        private List<ScoredChunk> search(String question, int limit) {
+            float[] vector = cache.computeIfAbsent(question, client::embed);
+            return repository.search(vector, limit);
+        }
+    }
+
+    private static EmbeddingClient embeddingClient(Map<String, String> env) {
+        String apiKey = envOrDefault(env, "DASHSCOPE_API_KEY", "");
+        if (apiKey.isBlank()) {
+            return null;
+        }
+        EmbeddingProperties properties = new EmbeddingProperties(
+                apiKey,
+                envOrDefault(env, "EMBEDDING_MODEL", EmbeddingProperties.DEFAULT_MODEL),
+                512,
+                10,
+                envOrDefault(env, "EMBEDDING_ENDPOINT", EmbeddingProperties.DEFAULT_ENDPOINT),
+                30, 3);
+        return new DashScopeEmbeddingClient(properties);
+    }
+
+    private static DriverManagerDataSource dataSource(Map<String, String> env) {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setDriverClassName("org.postgresql.Driver");
+        dataSource.setUrl(envOrDefault(env, "DB_URL", "jdbc:postgresql://localhost:5433/rag_kb"));
+        dataSource.setUsername(envOrDefault(env, "DB_USERNAME", "postgres"));
+        dataSource.setPassword(envOrDefault(env, "DB_PASSWORD", "rag123456"));
+        return dataSource;
+    }
+
+    /** 进程环境优先,其次 .env —— 这样 CI 里 export 的变量能覆盖本地文件。 */
+    private static String envOrDefault(Map<String, String> dotEnv, String name, String fallback) {
+        String fromProcess = System.getenv(name);
+        if (fromProcess != null && !fromProcess.isBlank()) {
+            return fromProcess;
+        }
+        String fromFile = dotEnv.get(name);
+        return fromFile == null || fromFile.isBlank() ? fallback : fromFile;
+    }
+
+    private static Map<String, String> loadDotEnv(Path path) {
+        Map<String, String> values = new HashMap<>();
+        if (!Files.isRegularFile(path)) {
+            return values;
+        }
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            // 读不了就当作没有 .env:CLI 应该退回到进程环境变量,而不是直接崩掉
+            return values;
+        }
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            int eq = trimmed.indexOf('=');
+            if (eq <= 0) {
+                continue;
+            }
+            String key = trimmed.substring(0, eq).trim();
+            String value = trimmed.substring(eq + 1).trim();
+            if (value.length() >= 2 && (value.startsWith("\"") && value.endsWith("\""))) {
+                value = value.substring(1, value.length() - 1);
+            }
+            values.put(key, value);
+        }
+        return values;
     }
 
     private static List<String> contents(List<ScoredChunk> hits) {
         return hits.stream().map(ScoredChunk::content).toList();
-    }
-
-    private static String env(String name, String fallback) {
-        String value = System.getenv(name);
-        return value == null || value.isBlank() ? fallback : value;
     }
 }

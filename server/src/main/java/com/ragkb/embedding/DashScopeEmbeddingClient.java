@@ -45,6 +45,11 @@ public class DashScopeEmbeddingClient implements EmbeddingClient {
     }
 
     @Override
+    public String model() {
+        return properties.model();
+    }
+
+    @Override
     public float[] embed(String text) {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException("待向量化的文本不能为空");

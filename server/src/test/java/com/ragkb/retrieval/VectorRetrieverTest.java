@@ -62,6 +62,11 @@ class VectorRetrieverTest {
         }
 
         @Override
+        public String model() {
+            return "test-model";
+        }
+
+        @Override
         public float[] embed(String text) {
             calls++;
             return new float[]{1, 0, 0, 0};

@@ -13,6 +13,14 @@ public interface EmbeddingClient {
     /** 向量维度,必须与向量表 DDL 一致。 */
     int dimension();
 
+    /**
+     * 产出向量的模型名。
+     *
+     * 入库时要写进 {@code chunk_embeddings.model},检索时要靠它限定范围 ——
+     * 换模型重刷期间,新旧向量同库共存,混在一起排序会让结果失真。
+     */
+    String model();
+
     /** 单条文本向量化。 */
     float[] embed(String text);
 

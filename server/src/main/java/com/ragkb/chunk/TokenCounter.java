@@ -24,9 +24,22 @@ import org.springframework.stereotype.Component;
  * 3. 两者相除得到这个模型的实际倍率,把它记进配置,再修正切片阈值。
  * 在此之前,下面所有阈值都以 cl100k 为单位表述,不要混用别的口径。
  *
- * TODO(校准): 倍率还没实测过。工具已经有了({@code embedding.TokenCalibration.measure}),
- *  配好 DASHSCOPE_API_KEY 后取一段真实语料跑一次,把得到的倍率写进本类注释与常量。
- *  不校准的话,"切片不超过 N token"这句话在中文语料上是失真的 —— 你以为切到 300,实际可能喂了 500。
+ * <b>校准结果(2026-10-21 实测)</b>:本地计数<b>偏高</b>。
+ * 用 5 份文档共 42 个切片整批向量化,接口回报 {@code usage.total_tokens} 合计 9135,
+ * 本地 cl100k 合计 11770,倍率 <b>0.776</b>(实际 ≈ 本地 × 0.776)。
+ * 也就是说"每片不超过 400"在真实口径下约等于 310,是<b>保守</b>的 —— 不会撞上模型上限,
+ * 但"一片 300 token"这句话的含义要比字面小四分之一。
+ *
+ * 三点使用注意:
+ * <ol>
+ *   <li>这个倍率来自 embedding 接口的批量计费,单条调用与批量调用可能有细微差异,
+ *       不要拿它当精确换算,当"量级修正"用;</li>
+ *   <li>换模型(或换供应商)必须重测,倍率是模型相关的,不是语言相关的;</li>
+ *   <li>如果将来要让"每片 300"指的是真实 token,应当把 target 反算成
+ *       {@code 300 / 0.776 ≈ 386} 的本地口径 —— 但改参数要重跑评估,不能只改数字。</li>
+ * </ol>
+ * 重测方法:配好 Key 后对整批切片调 {@code POST /api/documents/{id}/vectorize},
+ * 把它回报的 totalTokens 累加,与 {@code SELECT sum(token_count) FROM document_chunks} 相除。
  */
 @Component
 public class TokenCounter {

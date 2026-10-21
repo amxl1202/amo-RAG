@@ -26,6 +26,11 @@ class TokenCalibrationTest {
             }
 
             @Override
+            public String model() {
+                return "test-model";
+            }
+
+            @Override
             public float[] embed(String text) {
                 return new float[512];
             }
