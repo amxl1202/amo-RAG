@@ -14,8 +14,7 @@ import java.time.LocalDateTime;
  * 把向量放进来意味着换模型就要改切片表的 DDL 并重刷全表;分开之后,
  * 换模型只是往向量表里按新维度重建一遍,切片本身可以原样复用。
  *
- * TODO(ingest): 表和实体都已就绪,但当前没有任何代码写入它 —— 切片实现完成后,
- *  由入库流程把 ChunkDraft 逐条落成这个实体。在那之前这张表是空的。
+ * 写入方是 {@link ChunkStore}:入库流程把 {@link com.ragkb.chunk.ChunkDraft} 逐条落成这个实体。
  */
 @Data
 @TableName("document_chunks")

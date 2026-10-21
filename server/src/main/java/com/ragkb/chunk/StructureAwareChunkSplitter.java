@@ -1,6 +1,7 @@
 package com.ragkb.chunk;
 
 import com.ragkb.parse.ParsedDocument;
+import org.springframework.stereotype.Component;
 import com.ragkb.parse.StructuralBlock;
 
 import java.util.ArrayDeque;
@@ -38,6 +39,7 @@ import java.util.List;
  * 并入前一片(不丢内容,但会让前一片的内容跨进新章节、sectionPath 语义失真,并且可能超上限)。
  * 选中间那个的理由是对下游最不意外:片边界仍然落在结构边界上,不会出现"一片横跨两章"。
  */
+@Component
 public class StructureAwareChunkSplitter implements ChunkSplitter {
 
     private static final String SECTION_SEPARATOR = " > ";

@@ -21,6 +21,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final DocumentMapper documentMapper;
+    private final IngestService ingestService;
 
     @PostMapping
     public ApiResponse<DocumentView> upload(@RequestParam("file") MultipartFile file) {
@@ -30,6 +31,17 @@ public class DocumentController {
     @GetMapping("/{id}")
     public ApiResponse<DocumentView> get(@PathVariable Long id) {
         return ApiResponse.ok(DocumentView.from(documentService.getById(id)));
+    }
+
+    /**
+     * 手动触发入库(解析 + 切片)。
+     *
+     * 上传后会自动异步触发一次;这个接口用于重跑 —— 改了切片参数、或上次失败想重试时用。
+     * 它是同步的:调用方拿到的返回值就是"切出了多少片",而不是一个"已递交"的空响应。
+     */
+    @PostMapping("/{id}/ingest")
+    public ApiResponse<IngestService.IngestResult> ingest(@PathVariable Long id) {
+        return ApiResponse.ok(ingestService.ingest(id));
     }
 
     @GetMapping

@@ -45,6 +45,7 @@ public class DocumentService {
      * 结果是名为 .markdown 的文件解析得动却传不进来,且新增格式要改两处。
      */
     private final ParserRegistry parserRegistry;
+    private final IngestTrigger ingestTrigger;
 
     @Value("${app.upload.max-size-mb:50}")
     private int maxSizeMb;
@@ -107,9 +108,9 @@ public class DocumentService {
             }
             log.info("document uploaded: id={}, name={}, sha256={}...", entity.getId(), originalName,
                     sha256.substring(0, 8));
-            // TODO(ingest): 上传到此为止,解析/切片/向量化都还没接进来 —— 文件落盘后不会再被处理。
-            //  下一步应在这里投递异步任务,由后台推进 status(UPLOADED → PARSING → CHUNKED → … → READY);
-            //  状态值已在 DocumentEntity 中定义,但只有 UPLOADED 被真正写入过。
+            // 解析与切片交给后台:上传请求不该等它跑完。
+            // 状态推进(UPLOADED → PARSING → CHUNKED / FAILED)由 IngestService 负责。
+            ingestTrigger.trigger(entity.getId());
             return entity;
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JVM 缺少 SHA-256 实现", e);
