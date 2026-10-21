@@ -58,8 +58,7 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
         return applyOverlap(merged, document);
     }
 
-    // ---------------------------------------------------------------- 第一步:章节标注
-
+    //第一步:章节标注
     private List<SectionedBlock> annotateSections(List<StructuralBlock> blocks) {
         List<SectionedBlock> units = new ArrayList<>(blocks.size());
         // 栈顶永远是当前最深一级的标题
@@ -99,7 +98,7 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
         return Math.min(6, Math.max(1, level));
     }
 
-    // ------------------------------------------------------- 第二、三步:合并与硬切
+    //第二、三步:合并与硬切
 
     private List<ChunkDraft> merge(List<SectionedBlock> units, ParsedDocument document) {
         List<ChunkDraft> drafts = new ArrayList<>();
@@ -280,7 +279,7 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
                 piece.pageEnd());
     }
 
-    // ---------------------------------------------------------------- 第四步:重叠
+    //第四步:重叠
 
     /**
      * 给第二片之后的每一片补上"上一片尾部的若干完整句子"。
