@@ -49,6 +49,15 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_document_chunks_document ON document_chunks (document_id);
 
+-- 关键词检索:三元组索引
+-- 用 pg_trgm 而不是 tsvector —— PG 默认分词器不切中文(实测整句变成一个词项),
+-- 三元组匹配不依赖分词,是这套语料上唯一能用的字串方案。
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE INDEX IF NOT EXISTS idx_document_chunks_content_trgm
+    ON document_chunks USING gin (content gin_trgm_ops);
+
+
 -- 向量表:一个切片最多一条向量
 -- 维度写死在 vector(512):HNSW 索引要求维度固定,pgvector 没法对"同一列不同维度"建索引。
 -- 代价是换模型(维度变化)等于一次真正的迁移 —— 需要 ALTER COLUMN TYPE 并重刷全量。

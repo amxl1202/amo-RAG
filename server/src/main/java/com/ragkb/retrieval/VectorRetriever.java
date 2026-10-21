@@ -12,7 +12,7 @@ import java.util.List;
  * 这一层刻意很薄 —— 它只做"问题 → 向量 → Top-K"这一条直线,不含融合、不含重排。
  * 混合检索会把它和关键词通道并列调用,所以这里必须保持无状态、可重复调用。
  */
-public class VectorRetriever {
+public class VectorRetriever implements ChunkSearcher {
 
     private final EmbeddingClient embeddingClient;
     private final VectorStoreRepository repository;
@@ -26,6 +26,7 @@ public class VectorRetriever {
      * @param question 用户问题
      * @param limit    最多返回多少条;小于等于 0 直接返回空列表,不去调接口浪费一次调用
      */
+    @Override
     public List<ScoredChunk> search(String question, int limit) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("检索问题不能为空");
