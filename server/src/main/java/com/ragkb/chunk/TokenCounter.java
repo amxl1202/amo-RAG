@@ -24,9 +24,9 @@ import org.springframework.stereotype.Component;
  * 3. 两者相除得到这个模型的实际倍率,把它记进配置,再修正切片阈值。
  * 在此之前,下面所有阈值都以 cl100k 为单位表述,不要混用别的口径。
  *
- * TODO(校准): 倍率还没实测过。接入向量化后,取一段文本调 embedding 接口,
- *  用返回的 usage.total_tokens 除以 count(text),把得到的倍率补进注释,
- *  否则"切片不超过 N token"这句话在中文语料上是不准的。
+ * TODO(校准): 倍率还没实测过。工具已经有了({@code embedding.TokenCalibration.measure}),
+ *  配好 DASHSCOPE_API_KEY 后取一段真实语料跑一次,把得到的倍率写进本类注释与常量。
+ *  不校准的话,"切片不超过 N token"这句话在中文语料上是失真的 —— 你以为切到 300,实际可能喂了 500。
  */
 @Component
 public class TokenCounter {

@@ -49,3 +49,28 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_document_chunks_document ON document_chunks (document_id);
 
+-- 向量表:一个切片最多一条向量
+-- 维度写死在 vector(512):HNSW 索引要求维度固定,pgvector 没法对"同一列不同维度"建索引。
+-- 代价是换模型(维度变化)等于一次真正的迁移 —— 需要 ALTER COLUMN TYPE 并重刷全量。
+-- 之所以仍把向量单列一张表:迁移时只需重建向量表,切片与文档不受影响。
+-- 建扩展需要一次高权限操作,容器里由 dev-db.sh 完成,这里补一次幂等声明以便全新建库也能起来
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+    chunk_id   BIGINT PRIMARY KEY REFERENCES document_chunks (id) ON DELETE CASCADE,
+    -- 记录模型名:换了模型之后,能分辨哪些行是旧模型算的,避免混用导致排序失真
+    model      VARCHAR(64) NOT NULL,
+    dim        SMALLINT    NOT NULL,
+    embedding  vector(512) NOT NULL,
+    created_at TIMESTAMP   NOT NULL DEFAULT now(),
+
+    -- 维度与列定义分裂时,插进来就会失败,不如在表上直接挡住
+    CONSTRAINT ck_chunk_embeddings_dim CHECK (dim = 512)
+);
+
+-- HNSW:插入即生效、不需要预先训练,适合持续增量入库的知识库
+-- 用 vector_cosine_ops 与查询侧的距离算子 <=> 保持一致,索引才会被真正用上
+CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_hnsw
+    ON chunk_embeddings USING hnsw (embedding vector_cosine_ops);
+
+
