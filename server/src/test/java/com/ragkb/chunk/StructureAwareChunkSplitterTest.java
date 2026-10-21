@@ -322,4 +322,28 @@ class StructureAwareChunkSplitterTest {
                 .as("标题仍须领起正文")
                 .startsWith("章节标题");
     }
+
+    @Test
+    @DisplayName("阈值附近扫描:任何长度组合都不得产出超过硬上限的切片")
+    void noChunkExceedsMaxAcrossBoundarySweep() {
+        // 单测只钉一个长度容易漏掉窄带:token 不可相加,两段拼接后的计数比各自之和多 1~2 个,
+        // 于是"朴素和恰好等于 max"的那一格会被漏判(实测 head 48 + body 352:朴素和 400,
+        // 拼接后 401)。这里用扫描代替单点,把边界带整段盖住。
+        ChunkingProperties properties = ChunkingProperties.defaults();
+        String heading = "章节标题".repeat(16);
+
+        for (int repeats = 44; repeats <= 54; repeats++) {
+            String body = "正文内容测试句子。".repeat(repeats);
+            ParsedDocument document = doc(RawBlock.heading(3, heading), RawBlock.paragraph(body));
+
+            List<ChunkDraft> chunks = new StructureAwareChunkSplitter(properties).split(document);
+
+            for (ChunkDraft chunk : chunks) {
+                assertThat(chunk.tokenCount())
+                        .as("正文重复 %d 次时,第 %d 片超过了硬上限", repeats, chunk.index())
+                        .isLessThanOrEqualTo(properties.maxTokens());
+            }
+            assertInvariants(document, chunks, properties.maxTokens());
+        }
+    }
 }

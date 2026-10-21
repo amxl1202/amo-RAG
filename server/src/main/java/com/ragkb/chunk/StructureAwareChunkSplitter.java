@@ -33,8 +33,10 @@ import java.util.List;
  * 危险得多,而且 {@link ParsedDocument} 已保证不会产出空白块;真出现了说明上游有 bug,应该炸出来。
  *
  * 一处已知的例外:文档末尾若只剩标题(最后一块就是标题),尾片会是"只有标题"的一片。
- * 它不违反接口那四条硬约束(非空、下标合法、不超上限),而把这些标题丢掉就是直接丢内容 ——
- * 两害相权,选择保留。
+ * 它不违反接口那四条硬约束(非空、下标合法、不超上限)。
+ * 处理上有三个选项,不是两个:丢掉尾标题(直接丢内容)、让它独占一片(当前选择)、
+ * 并入前一片(不丢内容,但会让前一片的内容跨进新章节、sectionPath 语义失真,并且可能超上限)。
+ * 选中间那个的理由是对下游最不意外:片边界仍然落在结构边界上,不会出现"一片横跨两章"。
  */
 public class StructureAwareChunkSplitter implements ChunkSplitter {
 
@@ -117,10 +119,16 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
             // ② 缓冲里全是标题,且标题串 + 这一块也超过硬上限 ——
             //    这时既不能封口(会留下只有标题的碎片),也不能直接拼(会超上限),
             //    只能让第一片少装一些,把额度让给标题。
-            // 少了第 ② 条会静默产出超限切片:实测 48 token 标题 + 376 token 正文 → 425 token 的片,
-            // 而 max 是 400。这种超限不会报错,只有校验工具能发现。
-            boolean headingsPlusUnitTooLarge =
-                    !containsBody(buffer) && bufferTokens + unitTokens > properties.maxTokens();
+            //
+            // 判定②不能用"标题 token + 块 token"的朴素加法:两段拼接后的计数可能比各自之和多
+            // 1~2 个(边界处的分词合并方式变了),于是"朴素和恰好等于 max"这条窄带会被漏判。
+            // 实测:head 48 + body 352,朴素和 400 看似没超,拼接后实测 401,产出了一片 401 token。
+            // 所以触发条件也按拼接后的真实区间实测 —— 与修复内部用的是同一个口径。
+            boolean headingsPlusUnitTooLarge = false;
+            if (!buffer.isEmpty() && !containsBody(buffer)) {
+                String combined = document.slice(buffer.get(0).block().charStart(), unit.block().charEnd());
+                headingsPlusUnitTooLarge = tokenCounter.count(combined) > properties.maxTokens();
+            }
             if (unitTokens > properties.maxTokens() || headingsPlusUnitTooLarge) {
                 emitHeadingPrefixedUnit(drafts, buffer, unit, document);
                 bufferTokens = 0;
