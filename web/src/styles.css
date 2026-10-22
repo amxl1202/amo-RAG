@@ -1,127 +1,137 @@
-/* 全局样式:只定基调(颜色、字号、间距),组件细节交给 Element Plus。
+/* ═══════════════════════════════════════════════════════════
+   全局样式 —— 设计令牌 + 基调 + 少量"必须全局"的规则
+   参考 Argus 前端的设计语言:浅色专业风、柔和阴影、渐变品牌色。
+
    两件事刻意写在这里而不是散在组件里:
    1. 答案区用 v-html 渲染,里面的 <a> 拿不到 scoped 样式,必须全局;
-   2. 引用编号是这套系统最该被看见的东西,它的样式值得单独一条规则。 */
+   2. 引用编号是这套系统最该被看见的东西,样式值得单独一条规则。
+   ═══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Open+Sans:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --surface: #ffffff;
-  --bg: #f4f6fb;
-  --ink: #1f2430;
-  --muted: #6b7280;
-  --line: #e5e8f0;
-  --accent: #3d5afe;
-  --accent-soft: #eef1ff;
-  --warn: #b25e00;
-  --warn-soft: #fff6e5;
-  --radius: 12px;
+  /* Element Plus 主色覆盖 */
+  --el-color-primary: #4A90D9;
+  --el-color-primary-light-3: #7AB8F5;
+  --el-color-primary-light-5: #A3CFF7;
+  --el-color-primary-light-7: #C7E2FA;
+  --el-color-primary-light-8: #DAEDFC;
+  --el-color-primary-light-9: #EDF5FD;
+  --el-color-primary-dark-2: #3A7BC8;
+  --el-color-success: #10b981;
+  --el-color-warning: #f59e0b;
+  --el-color-danger: #ef4444;
+  --el-border-radius-base: 8px;
+
+  /* 品牌色 */
+  --brand-primary: #4A90D9;
+  --brand-primary-light: #7AB8F5;
+  --brand-primary-dark: #3A7BC8;
+  --brand-accent: #5CC9C1;
+  --brand-accent-dark: #3DA89F;
+
+  /* 兼容旧变量名(部分组件仍引用) */
+  --accent: var(--brand-primary);
+  --accent-soft: #edf5fd;
+  --ink: #1e293b;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --bg: #f8fafc;
+
+  /* 表面 */
+  --surface-white: #ffffff;
+  --surface-subtle: #f8fafc;
+  --surface-muted: #f1f5f9;
+  --surface-accent: #edf5fd;
+
+  /* 文本 */
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  /* 边框 */
+  --border-default: #e2e8f0;
+  --border-subtle: #f1f5f9;
+
+  /* 阴影 —— 柔和 UI 风格 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 28px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.1);
+
+  /* 圆角 */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* 过渡 */
+  --ease-out: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html,
 body,
 #app {
   height: 100%;
-  margin: 0;
+}
+
+html {
+  font-size: 16px;
 }
 
 body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-family: 'Open Sans', 'Noto Sans SC', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
   font-size: 14px;
   line-height: 1.7;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
-/* ---------------- 顶栏 ---------------- */
-
-.app-header {
-  height: 60px;
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  padding: 0 28px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  z-index: 10;
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Poppins', 'Noto Sans SC', sans-serif;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; font-family: inherit; }
 
-.brand strong {
-  font-size: 17px;
-  letter-spacing: 0.2px;
-}
+/* 滚动条统一成细条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
 
-.brand span {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.nav {
-  display: flex;
-  gap: 4px;
-}
-
-.nav a {
-  padding: 6px 14px;
-  border-radius: 8px;
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 14px;
-}
-
-.nav a.router-link-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.header-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-/* ---------------- 页面骨架 ---------------- */
+/* ═══════════════ 通用页面骨架 ═══════════════ */
 
 .page {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 28px 28px 48px;
-}
-
-.page-title {
-  margin: 0 0 4px;
-  font-size: 20px;
-}
-
-.page-sub {
-  margin: 0 0 20px;
-  color: var(--muted);
-  font-size: 13px;
+  width: 100%;
+  padding: 0 28px 48px;
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: var(--surface-white);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
 }
 
-/* ---------------- 答案区 ---------------- */
+/* ═══════════════ 答案区(v-html 渲染,必须全局) ═══════════════ */
 
 /* 模型输出里的 [E1] 会被前端换成链接,这里给引用编号一个"可点"的样子 */
 .answer a.cite-link,
@@ -130,54 +140,44 @@ body {
   margin: 0 2px;
   padding: 0 6px;
   border-radius: 6px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--surface-accent);
+  color: var(--brand-primary);
   font-size: 12px;
   font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
   text-decoration: none;
   line-height: 20px;
   vertical-align: 1px;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .answer a.cite-link:hover,
 .answer a[href^='#cite-']:hover {
-  background: var(--accent);
+  background: var(--brand-primary);
   color: #fff;
+  box-shadow: 0 2px 8px rgba(74, 144, 217, 0.3);
 }
 
-.answer p {
-  margin: 0 0 10px;
-}
-
-.answer p:last-child {
-  margin-bottom: 0;
-}
-
-.answer code {
-  background: #f2f4f9;
-  padding: 1px 5px;
-  border-radius: 5px;
-  font-size: 13px;
-}
-
-/* 引用原文:保留换行,PDF 里的排版换行不该被压成一整段 */
+/* 引用原文:保留换行,PDF 里的排版换行不该被压成一整段(已知缺陷 P-23,前端折中方案) */
 .quote-body {
   white-space: pre-wrap;
   line-height: 1.85;
-  color: var(--ink);
-  background: #fafbff;
-  border: 1px solid var(--line);
+  color: var(--text-primary);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-default);
   border-radius: 10px;
   padding: 14px 16px;
   font-size: 13.5px;
 }
 
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  color: var(--muted);
-  font-size: 12.5px;
-  margin-bottom: 12px;
+/* ═══════════════ Element Plus 微调 ═══════════════ */
+
+.el-drawer__header {
+  margin-bottom: 0;
+  padding: 18px 24px;
+  border-bottom: 1px dashed var(--border-default);
+  font-family: 'Poppins', 'Noto Sans SC', sans-serif;
+  font-weight: 700;
+  color: var(--text-primary);
 }

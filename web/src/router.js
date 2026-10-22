@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken } from './api'
 import LoginView from './views/LoginView.vue'
+import HomeView from './views/HomeView.vue'
 import DocumentsView from './views/DocumentsView.vue'
 import ChatView from './views/ChatView.vue'
 
@@ -14,7 +15,7 @@ import ChatView from './views/ChatView.vue'
 const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/chat' },
+    { path: '/', name: 'home', component: HomeView, meta: { public: true } },
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     { path: '/documents', name: 'documents', component: DocumentsView },
     { path: '/chat', name: 'chat', component: ChatView },
