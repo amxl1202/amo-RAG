@@ -19,6 +19,9 @@ public record AuthRequest(
         String username,
 
         @NotBlank(message = "密码不能为空")
+        // 注意:这里数的是<b>字符</b>。BCrypt 的上限是 72 <b>字节</b>,中文一字三字节,
+        // 所以 25 个汉字就能越过它 —— 字节数由 AuthService.requireBcryptLength 单独校验,
+        // 不能只靠这条注解
         @Size(min = 8, max = 64, message = "密码长度需在 8~64 位之间")
         String password) {
 }

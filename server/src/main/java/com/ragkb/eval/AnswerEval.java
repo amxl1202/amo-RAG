@@ -146,11 +146,16 @@ public final class AnswerEval {
         System.out.printf("  误拒率       %.4f  (%d/%d 条文档内问题被错误拒答)%n",
                 metrics.falseRefusalRate, metrics.falseRefusals, metrics.inScope);
         System.out.printf("  编造编号次数 %d(应恒为 0;不为 0 说明提示词需要收紧)%n", metrics.unknownLabels);
+        if (metrics.unavailableCases > 0) {
+            System.out.printf("  自检不可用   %d 题(已从通过率分母中剔除 —— 没跑成不等于通过)%n",
+                    metrics.unavailableCases);
+        }
         if (metrics.degradedCases > 0) {
             System.out.printf("  通道故障     %d 题(已从拒答指标中剔除 —— 检索不完整不能算模型表现)%n",
                     metrics.degradedCases);
         }
-        System.out.printf("  用量         %d token,耗时 %.1f 秒%n",
+        System.out.printf("  用量         生成 %d + 自检 %d = %d token,耗时 %.1f 秒%n",
+                metrics.totalTokens - metrics.selfCheckTokens, metrics.selfCheckTokens,
                 metrics.totalTokens, metrics.totalMillis / 1000.0);
         System.exit(metrics.passed() ? 0 : 1);
     }
@@ -188,6 +193,9 @@ public final class AnswerEval {
         if (answer.status() == QaAnswer.Status.FAILED) {
             return "调用或通道故障";
         }
+        if (answer.verdict() != null && answer.verdict().unavailable()) {
+            return "自检不可用(已保留原答案)";
+        }
         if (evalCase.shouldRefuse()) {
             return answer.status() == QaAnswer.Status.REFUSED
                     ? "正确拒答(" + answer.reason() + ")"
@@ -209,7 +217,8 @@ public final class AnswerEval {
                            double answerSupportRate, int keptSentences, int judgedSentences,
                            double refusalAccuracy, int correctRefusals, int outOfScope,
                            double falseRefusalRate, int falseRefusals, int inScope,
-                           int unknownLabels, int totalTokens, long totalMillis, int degradedCases) {
+                           int unknownLabels, int totalTokens, long totalMillis, int degradedCases,
+                           int unavailableCases, int selfCheckTokens) {
 
         /** 两个阈值下的硬性验收:文档外全拒、文档内 0 误拒。 */
         boolean passed() {
@@ -230,6 +239,8 @@ public final class AnswerEval {
         int tokens = 0;
         long millis = 0;
         int degraded = 0;
+        int unavailable = 0;
+        int selfCheckTokens = 0;
 
         for (CaseResult result : results) {
             QaAnswer answer = result.answer();
@@ -239,8 +250,16 @@ public final class AnswerEval {
             tokens += answer.totalTokens();
             millis += answer.totalMillis();
             if (answer.verdict() != null) {
-                judged += answer.verdict().kept() + answer.verdict().dropped();
-                kept += answer.verdict().kept();
+                selfCheckTokens += answer.verdict().checkTokens();
+                if (answer.verdict().unavailable()) {
+                    // 自检没跑成 = 我们并不知道这些句子有没有支撑。
+                    // 记成"全部通过"会让支持率从 0.96 涨到 1.00,而且从输出上看不出来 ——
+                    // 与已经修掉的 BUG-11(通道故障记成拒答)是同一类错误
+                    unavailable++;
+                } else if (answer.verdict().countsTowardSupportRate()) {
+                    judged += answer.verdict().kept() + answer.verdict().dropped();
+                    kept += answer.verdict().kept();
+                }
             }
             // 有一路降级的题不进拒答指标:那一道的检索结果不完整,把它的拒答/误拒
             // 记进准确率,等于把通道故障算成模型表现。单列一行,让"这次跑得不干净"可见
@@ -263,7 +282,7 @@ public final class AnswerEval {
                 ratio(kept, judged), kept, judged,
                 ratio(correctRefusals, outOfScope), correctRefusals, outOfScope,
                 ratio(falseRefusals, inScope), falseRefusals, inScope,
-                unknown, tokens, millis, degraded);
+                unknown, tokens, millis, degraded, unavailable, selfCheckTokens);
     }
 
     private static double ratio(int numerator, int denominator) {

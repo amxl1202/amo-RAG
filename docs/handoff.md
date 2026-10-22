@@ -1,6 +1,6 @@
 # 接手文档（给下一个会话看）
 
-> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**202 个全绿，0 跳过**
+> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**203 个全绿，0 跳过**
 > 这份文件的目的：让任何一个新会话在 5 分钟内知道"现在在哪、下一步做什么、哪些坑别再踩"。
 > 它不替代 `PLAN.md`（那是完整计划），只做交接。
 
@@ -10,7 +10,7 @@
 
 **L1 + L2 全部打通**：浏览器登录 → 上传 → 解析 → 切片 → 向量化 → 双通道检索 → RRF →
 门控 → 提示词 → 生成 → 引用解析 → 自检 → 拒答 → 点引用看原文。
-后端 202 个测试全绿，前端有 6 张真实截图在 `docs/screenshots/`。
+后端 203 个测试全绿，前端有 6 张真实截图在 `docs/screenshots/`。
 **剩下的是 L3（可选增强）与已登记的 P2 项。**
 
 ---
@@ -99,7 +99,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 
 | 项 | 数值 | 含义 |
 |---|---|---|
-| 测试规模 | **202 个** | 0 失败；库没起时 13 个 skip（6 个真库用例 + 7 条安全链路） |
+| 测试规模 | **203 个** | 0 失败；库没起时 13 个 skip（6 个真库用例 + 7 条安全链路） |
 | token 倍率（embedding） | **0.776** | 本地 cl100k 对 embedding 输入高估 |
 | token 倍率（chat 提示词） | **0.666 / 0.653** | 生成输入高估约 1/3，比 embedding 更低 |
 | 检索（59 条） | HYBRID k=60：recall@5 **1.0** / MRR **0.8483**；纯向量 0.9388 / 0.7657 | 融合首次**真正**超过单通道 |
@@ -152,7 +152,21 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
     条件是"端口通"而不是"表存在"——库起了但 schema 有问题时应当红，不能被 skip 掉。
 21. **环境代理会把 localhost 也代理掉**：`curl http://localhost:8080/health` 返回 502 时，
     先加 `--noproxy '*'` 或设 `NO_PROXY`，别急着判"后端挂了"。
-22. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
+22. **展示文本与引用列表必须是同一个来源**：自检删句之后，返回的引用要按"留下来的句子"过滤，
+    否则前端会出现"面板里挂着正文中已找不到的编号"——直接违反"每句话可追溯"的承诺。
+23. **`@ExceptionHandler(Exception.class)` 会吞掉框架的 4xx**：坏 JSON、空 body、方法不允许、
+    参数类型错全变成 500，客户端以为地址写错了、日志里全是假 500。必须在兜底之前显式处理
+    `HttpMessageNotReadable`(400)、`MethodArgumentTypeMismatch`(400)、`MissingServletRequestPart`(400)、
+    `HttpRequestMethodNotSupported`(405)、`HttpMediaTypeNotSupported`(415)。
+24. **BCrypt 的上限是 72 字节不是 72 字符**：`@Size(max=64)` 数的是字符，25 个汉字就是 75 字节 →
+    注册直接 500。字节数要在 service 里单独校验，并给出"约 24 个汉字"的提示。
+25. **`@Component` 的 Filter + `addFilterBefore` = 注册两次**（见坑 19）。
+26. **`spring-boot-starter-security` 会自带一个内存默认用户**并把随机密码打进启动日志；
+    纯 JWT 应用要 `exclude = UserDetailsServiceAutoConfiguration.class`，否则多了个"看似凭据"的日志，
+    将来谁开 httpBasic 还会变成后门。
+27. **JJWT 的 `signWith(key)` 会按密钥长度自选算法**：64 字节密钥选的是 HS512，
+    而注释写的是 HS256。要固定算法就显式 `signWith(key, Jwts.SIG.HS256)`。
+28. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
     `@AutoConfigureMockMvc`，`TestRestTemplate` 也不在 `spring-boot-test` 里）。
     所以认证的端到端验收用 `@SpringBootTest(RANDOM_PORT)` + JDK `HttpClient` 真打端口，没有引入新依赖。
 

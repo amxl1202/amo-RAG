@@ -157,6 +157,11 @@ public class EvidenceEvaluator {
      * @param kept        保留的句子数
      * @param unavailable 自检调用失败。此时保留原答案、不拒答 ——
      *                    自检是"更严格"的附加检查,它坏了不该让系统开始乱拒答
+     * @param keptLabels  留下来的句子携带的编号。<b>调用方必须用它过滤引用列表</b>:
+     *                    展示文本是被删剩的句子,而引用列表若来自原答案,就会出现
+     *                    "面板里挂着一个正文中已经找不到的编号"
+     * @param checkPromptTokens     自检调用的输入 token(调用失败时为 0)
+     * @param checkCompletionTokens 自检调用的输出 token
      */
     public record Verdict(
             boolean refuse,
@@ -164,7 +169,24 @@ public class EvidenceEvaluator {
             String text,
             int dropped,
             int kept,
-            boolean unavailable) {
+            boolean unavailable,
+            java.util.Set<String> keptLabels,
+            int checkPromptTokens,
+            int checkCompletionTokens) {
+
+        public Verdict {
+            keptLabels = java.util.Set.copyOf(keptLabels);
+        }
+
+        /** 自检的 token 总量:成本口径要含这一次调用,否则报告里的用量会少算近一半。 */
+        public int checkTokens() {
+            return checkPromptTokens + checkCompletionTokens;
+        }
+
+        /** 这一题是否该计入"自检通过率":自检没跑成、或整题被拒,都不该进分母。 */
+        public boolean countsTowardSupportRate() {
+            return !unavailable && !refuse;
+        }
     }
 
     private final Thresholds thresholds;
@@ -225,20 +247,25 @@ public class EvidenceEvaluator {
             throw new IllegalArgumentException("自检需要提示词与已解析的答案");
         }
         if (answer.sentences().isEmpty()) {
-            return new Verdict(true, Reason.MODEL_INSUFFICIENT, PromptBuilder.INSUFFICIENT, 0, 0, false);
+            return new Verdict(true, Reason.MODEL_INSUFFICIENT, PromptBuilder.INSUFFICIENT,
+                    0, 0, false, java.util.Set.of(), 0, 0);
         }
         if (AnswerGenerator.looksLikeRefusal(answer.raw())) {
-            return new Verdict(true, Reason.MODEL_INSUFFICIENT, PromptBuilder.INSUFFICIENT, 0, 0, false);
+            return new Verdict(true, Reason.MODEL_INSUFFICIENT, PromptBuilder.INSUFFICIENT,
+                    0, 0, false, java.util.Set.of(), 0, 0);
         }
 
         List<ParsedSentence> judgeable = answer.sentences().stream().filter(s -> !s.blank()).toList();
         TreeSet<Integer> unsupported;
+        ChatResponse response;
         try {
-            unsupported = askUnsupported(prompt, judgeable, checker);
+            response = askUnsupported(prompt, judgeable, checker);
+            unsupported = parseUnsupported(response.content(), judgeable.size());
         } catch (ChatException e) {
-            // 自检坏了不能变成"系统开始拒答":保留原答案,把 unavailable 标出来
+            // 自检坏了不能变成"系统开始拒答":保留原答案,把 unavailable 标出来。
+            // keptLabels 给全集:整段答案都还在,引用列表也就不该缩水
             return new Verdict(false, Reason.CHECK_UNAVAILABLE, answer.sanitized(),
-                    0, judgeable.size(), true);
+                    0, judgeable.size(), true, labelsOf(judgeable), 0, 0);
         }
 
         List<ParsedSentence> kept = new ArrayList<>();
@@ -249,7 +276,7 @@ public class EvidenceEvaluator {
         }
         if (kept.isEmpty()) {
             return new Verdict(true, Reason.UNSUPPORTED, PromptBuilder.INSUFFICIENT,
-                    judgeable.size(), 0, false);
+                    judgeable.size(), 0, false, java.util.Set.of(), response.promptTokens(), response.completionTokens());
         }
         StringBuilder text = new StringBuilder();
         for (ParsedSentence sentence : kept) {
@@ -257,7 +284,8 @@ public class EvidenceEvaluator {
             text.append(sentence.text());
         }
         return new Verdict(false, Reason.NONE, text.toString().strip(),
-                judgeable.size() - kept.size(), kept.size(), false);
+                judgeable.size() - kept.size(), kept.size(), false,
+                labelsOf(kept), response.promptTokens(), response.completionTokens());
     }
 
     /**
@@ -270,7 +298,7 @@ public class EvidenceEvaluator {
      *
      * @throws ChatException 调用失败或返回不可解析 —— 由调用方决定降级方式
      */
-    private TreeSet<Integer> askUnsupported(Prompt prompt, List<ParsedSentence> sentences, ChatModel checker) {
+    private ChatResponse askUnsupported(Prompt prompt, List<ParsedSentence> sentences, ChatModel checker) {
         StringBuilder numbered = new StringBuilder();
         for (int i = 0; i < sentences.size(); i++) {
             numbered.append(i + 1).append(". ").append(sentences.get(i).plain().strip()).append('\n');
@@ -285,8 +313,7 @@ public class EvidenceEvaluator {
                 + "\n\n待判定句子:\n" + numbered
                 + "请输出没有材料支撑的句子序号。";
 
-        ChatResponse response = checker.complete(systemPrompt, userPrompt);
-        return parseUnsupported(response.content(), sentences.size());
+        return checker.complete(systemPrompt, userPrompt);
     }
 
     /**
@@ -316,6 +343,17 @@ public class EvidenceEvaluator {
             }
         }
         return result;
+    }
+
+    /** 汇总一批句子里出现过的编号(去重)。 */
+    private static java.util.Set<String> labelsOf(List<ParsedSentence> sentences) {
+        java.util.Set<String> labels = new java.util.LinkedHashSet<>();
+        for (ParsedSentence sentence : sentences) {
+            for (Citation citation : sentence.citations()) {
+                labels.add(citation.label());
+            }
+        }
+        return labels;
     }
 
     /** 只解析一个整数数组,不引入完整 JSON 依赖的取舍:结构固定,解析器越小越难出错。 */

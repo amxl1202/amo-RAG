@@ -83,19 +83,23 @@ async function ask(text) {
   }
 }
 
-/** 点答案里的引用编号:抽屉里展示这一段原文与它的出处。 */
-function onAnswerClick(event) {
+/**
+ * 点答案里的引用编号:抽屉里展示这一段原文与它的出处。
+ *
+ * 必须拿到"被点的是哪条消息":同一编号在不同回答里指向完全不同的切片,
+ * 早先的写法是全局从新到旧找第一个含该编号的回答 —— 问过三个问题之后,
+ * 点第一条答案里的 [E1],打开的是第三条的原文。
+ */
+function onAnswerClick(event, message) {
   const anchor = event.target.closest('a[href^="#cite-"]')
   if (!anchor) {
     return
   }
   event.preventDefault()
   const label = anchor.getAttribute('href').slice('#cite-'.length)
-  // 从最近一条带引用的回答里找:同一编号在不同回答里指向不同切片,不能全局查
-  const owner = [...messages.value].reverse().find((m) => m.citations?.some((c) => c.label === label))
-  const citation = owner?.citations.find((c) => c.label === label)
+  const citation = message.citations?.find((c) => c.label === label)
   if (!citation) {
-    ElMessage.warning(`找不到 ${label} 对应的原文`)
+    ElMessage.warning(`这条回答里找不到 ${label} 对应的原文`)
     return
   }
   activeCitation.value = citation
@@ -141,7 +145,7 @@ function pageText(citation) {
             <span v-if="message.meta" class="meta">{{ message.meta }}</span>
           </div>
 
-          <div class="answer" @click="onAnswerClick" v-html="message.html"></div>
+          <div class="answer" @click="onAnswerClick($event, message)" v-html="message.html"></div>
 
           <div v-if="message.citations && message.citations.length" class="cite-bar">
             <span class="cite-label">引用</span>

@@ -23,8 +23,10 @@ import java.util.List;
  * @param candidateCount  融合后的候选条数
  * @param usedCount       实际放进提示词的条数
  * @param degraded        是否有一路检索降级
- * @param promptTokens    模型输入 token
- * @param completionTokens 模型输出 token
+ * @param promptTokens    生成调用的输入 token
+ * @param completionTokens 生成调用的输出 token
+ * @param checkPromptTokens     自检调用的输入 token(自检没跑或失败时为 0)
+ * @param checkCompletionTokens 自检调用的输出 token
  * @param retrievalMillis 检索耗时
  * @param answerMillis    生成 + 自检的总耗时。刻意不叫 generationMillis:自检是第二次模型调用,
  *                        算进"生成"会让这个数比单次生成大近一倍,排查延迟时容易被误导
@@ -42,6 +44,8 @@ public record QaAnswer(
         boolean degraded,
         int promptTokens,
         int completionTokens,
+        int checkPromptTokens,
+        int checkCompletionTokens,
         long retrievalMillis,
         long answerMillis) {
 
@@ -59,7 +63,13 @@ public record QaAnswer(
         unknownLabels = List.copyOf(unknownLabels);
     }
 
+    /** 生成 + 自检两次调用的 token 合计。只算生成会少报近一半,报告里的成本口径要用这个。 */
     public int totalTokens() {
+        return promptTokens + completionTokens + checkPromptTokens + checkCompletionTokens;
+    }
+
+    /** 生成那一次调用的 token(排查"答案为什么长"时只看这部分)。 */
+    public int generationTokens() {
         return promptTokens + completionTokens;
     }
 

@@ -2,6 +2,7 @@ package com.ragkb.qa;
 
 import com.ragkb.generation.Citation;
 import com.ragkb.generation.Evidence;
+import com.ragkb.generation.EvidenceEvaluator;
 
 import java.util.List;
 
@@ -67,7 +68,10 @@ public record QaResponse(
                 answer.status().name(),
                 answer.text(),
                 answer.citations().stream().map(CitationView::from).toList(),
-                answer.reason() == null ? null : answer.reason().name(),
+                // 正常作答时给 null,而不是字符串 "NONE":前端只需要判断"有没有原因",
+                // 多一个 NONE 分支就多一处判空逻辑
+                answer.reason() == null || answer.reason() == EvidenceEvaluator.Reason.NONE
+                        ? null : answer.reason().name(),
                 answer.promptTokens(),
                 answer.completionTokens(),
                 answer.retrievalMillis(),

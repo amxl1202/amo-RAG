@@ -3,6 +3,7 @@ package com.ragkb.qa;
 import com.ragkb.generation.AnswerGenerator;
 import com.ragkb.generation.ChatException;
 import com.ragkb.generation.ChatModel;
+import com.ragkb.generation.Citation;
 import com.ragkb.generation.CitationParser;
 import com.ragkb.generation.Evidence;
 import com.ragkb.generation.EvidenceEvaluator;
@@ -91,7 +92,7 @@ public class QaService {
                     : QaAnswer.Status.REFUSED;
             String text = status == QaAnswer.Status.FAILED ? "" : PromptBuilder.INSUFFICIENT;
             return new QaAnswer(question, status, text, List.of(), gate, null, List.of(),
-                    0, 0, hits.anyDegraded(), 0, 0, retrievalMillis, 0);
+                    0, 0, hits.anyDegraded(), 0, 0, 0, 0, retrievalMillis, 0);
         }
 
         List<ScoredChunk> fused = fuser.fuse(hits.vectorHits(), hits.keywordHits(), RRF_K, channelLimit)
@@ -110,7 +111,7 @@ public class QaService {
             // 服务故障与拒答是两件事:前者该重试/报警,后者是正确行为
             return new QaAnswer(question, QaAnswer.Status.FAILED, "",
                     List.of(), gate, null, List.of(), fused.size(), prompt.citations().size(),
-                    hits.anyDegraded(), 0, 0, retrievalMillis,
+                    hits.anyDegraded(), 0, 0, 0, 0, retrievalMillis,
                     (System.nanoTime() - answerStarted) / 1_000_000);
         }
 
@@ -118,20 +119,20 @@ public class QaService {
         EvidenceEvaluator.Verdict verdict = evaluator.verify(prompt, parsed, chatModel);
         long answerMillis = (System.nanoTime() - answerStarted) / 1_000_000;
 
+        // 引用列表必须跟着"留下来的句子"走:展示文本是 verdict.text(),
+        // 若这里仍返回原答案的全部编号,前端就会出现"面板里挂着正文中找不到的编号" ——
+        // 直接违反"每句话都能追溯"这条对用户的承诺
+        List<Citation> cited = verdict.refuse() ? List.of()
+                : parsed.citations().stream()
+                        .filter(citation -> verdict.keptLabels().contains(citation.label()))
+                        .toList();
+
         return new QaAnswer(question,
                 verdict.refuse() ? QaAnswer.Status.REFUSED : QaAnswer.Status.ANSWERED,
-                verdict.text(),
-                verdict.refuse() ? List.of() : parsed.citations(),
+                verdict.text(), cited,
                 gate, verdict, parsed.unknownLabels(), fused.size(), prompt.citations().size(),
                 hits.anyDegraded(), generated.promptTokens(), generated.completionTokens(),
+                verdict.checkPromptTokens(), verdict.checkCompletionTokens(),
                 retrievalMillis, answerMillis);
-    }
-
-    private static QaAnswer refused(String question, EvidenceEvaluator.Gate gate,
-                                    HybridRetriever.HybridResult hits,
-                                    int promptTokens, int completionTokens, long retrievalMillis) {
-        return new QaAnswer(question, QaAnswer.Status.REFUSED, PromptBuilder.INSUFFICIENT,
-                List.of(), gate, null, List.of(), 0, 0, hits.anyDegraded(),
-                promptTokens, completionTokens, retrievalMillis, 0);
     }
 }

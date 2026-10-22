@@ -82,7 +82,10 @@ public class JwtTokenProvider {
                 .issuer(issuer)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(ttl)))
-                .signWith(key)
+                // 显式指定算法:只写 signWith(key) 时 JJWT 会按密钥长度自选,
+                // 64 字节的密钥会被选成 HS512,而注释与文档一直写的是 HS256 ——
+                // 算法与文档不一致,排查令牌问题时会被带偏
+                .signWith(key, Jwts.SIG.HS256)
                 .compact();
     }
 

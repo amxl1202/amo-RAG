@@ -63,8 +63,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 白名单只列具体路径,不用 /api/auth/** 这种通配:
                         // 将来 auth 包下加"改密码""注销全部会话"时,通配会把它们一起公开,
-                        // 而那种失误没有任何提示 —— 与"默认拒绝"要防的正是同一类事情
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                        // 而那种失误没有任何提示 —— 与"默认拒绝"要防的正是同一类事情。
+                        // 这里不限定 HTTP 方法:限定成 POST 会让 GET 落进 anyRequest 变成 401,
+                        // 而"登录接口要鉴权"是个误导;放开后 GET 会正常得到 405(方法不允许)
+                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
                         // 探活与错误页给运维和容器探测用
                         .requestMatchers("/health", "/error").permitAll()
                         // 其余一律需要身份 —— 包括将来新加的接口,不需要记得加注解

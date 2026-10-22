@@ -5,6 +5,7 @@ import com.ragkb.generation.AnswerGenerator;
 import com.ragkb.generation.ChatException;
 import com.ragkb.generation.ChatModel;
 import com.ragkb.generation.ChatResponse;
+import com.ragkb.generation.Citation;
 import com.ragkb.generation.EvidenceEvaluator;
 import com.ragkb.generation.PromptBuilder;
 import com.ragkb.retrieval.ChunkSearcher;
@@ -210,5 +211,27 @@ class QaServiceTest {
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.FAILED);
         assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.CHANNELS_DOWN);
+    }
+
+    @Test
+    @DisplayName("自检删掉一句后,引用列表必须同步缩水 —— 不能留下正文里已不存在的编号")
+    void droppedSentenceTakesItsCitationWithIt() {
+        // 第一句是唯一携带 E1 的句子,自检把它删掉;第二句带 E2 保留
+        ScriptedModel model = new ScriptedModel("第一句[E1]。第二句[E2]。", "{\"unsupported\":[1]}");
+        List<ScoredChunk> hits = List.of(
+                chunk(1, "材料正文甲。", 0.72),
+                chunk(2, "材料正文乙。", 0.71));
+        QaService service = service(
+                (q, limit) -> hits,
+                (q, limit) -> hits,
+                model);
+
+        QaAnswer answer = service.ask("问题");
+
+        assertThat(answer.status()).isEqualTo(QaAnswer.Status.ANSWERED);
+        assertThat(answer.text()).doesNotContain("[E1]").contains("[E2]");
+        assertThat(answer.citations()).extracting(Citation::label)
+                .as("展示文本里已经没有 E1,引用面板就不能再挂它")
+                .containsExactly("E2");
     }
 }
