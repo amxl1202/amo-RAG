@@ -67,7 +67,9 @@ async function ask(text) {
       status: answer.status,
       reason: answer.reason,
       citations: answer.citations || [],
-      meta: `${answer.promptTokens + answer.completionTokens} token · 检索 ${answer.retrievalMillis} ms · 生成 ${answer.answerMillis} ms`,
+      // 注意 answerMillis 含"生成 + 自检"两次调用,不能标成"生成"——
+      // 它比单次生成大近一倍,标错了会让人误判延迟来源
+      meta: `${answer.promptTokens + answer.completionTokens} token · 检索 ${answer.retrievalMillis} ms · 回答 ${answer.answerMillis} ms`,
     })
   } catch (e) {
     ElMessage.error(e.message)
