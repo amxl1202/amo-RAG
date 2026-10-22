@@ -11,6 +11,10 @@
 #   BASE=http://localhost:8080 scripts/demo-smoke.sh
 set -euo pipefail
 
+# 本机地址不走环境代理:开发机上常挂着代理,curl 会把 localhost 也发过去,
+# 得到 502 而不是真实响应 —— 那种失败看起来像"后端挂了",排查方向会被带偏
+export NO_PROXY="localhost,127.0.0.1,${NO_PROXY:-}"
+
 BASE="${BASE:-http://localhost:8080}"
 USER_NAME="${USER_NAME:-demo}"
 PASSWORD="${PASSWORD:-demo12345}"

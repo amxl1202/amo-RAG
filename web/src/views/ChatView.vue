@@ -52,7 +52,9 @@ async function ask(text) {
   if (!content || loading.value) {
     return
   }
-  messages.value.push({ role: 'user', text: content, html: toHtml(content) })
+  // 用户消息用插值渲染(不解析 markdown):既避免把自己输入的 HTML 当内容执行,
+  // 也不需要为气泡算一份用不到的 HTML
+  messages.value.push({ role: 'user', text: content })
   question.value = ''
   loading.value = true
   scrollToBottom()

@@ -5,6 +5,7 @@ import com.ragkb.user.UserEntity;
 import com.ragkb.user.mapper.UserMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -32,11 +33,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 这组用例的关键是"默认拒绝":没令牌必须 401、白名单必须放行、令牌有效必须放行。
  * 三者共用一次登录会让失败时看不出是哪一环坏了。
  *
- * 依赖真库(users 表)。库没起时本类会整体失败 —— 这是有意的:认证链路没法离线验证,
- * 与其 skip 掉假装通过,不如让它红。
+ * 依赖真库(users 表)。库没起时<b>跳过</b>,与仓库里其它真库测试的口径一致。
+ *
+ * 这里改过一次口径:最初写的是"库没起就让它红,不假装通过"。实际代价是——
+ * 忘了开 Docker 时整个构建红,"每天测试全绿才能推送"的纪律在<b>最常见的场景</b>下直接失效,
+ * 而红构建被习惯性忽略之后,真红也看不见了。跳过在报告里是可见的(Skipped: 7),
+ * "没跑"与"通过"并没有被混为一谈;真正该红的是"库起来了但代码有问题",
+ * 那种情况 {@link com.ragkb.support.DatabaseAvailableCondition} 会放行,测试照常执行。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "app.auth.secret=test-secret-0123456789abcdef0123456789abcdef")
+@ExtendWith(com.ragkb.support.DatabaseAvailableCondition.class)
 class SecurityChainTest {
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()

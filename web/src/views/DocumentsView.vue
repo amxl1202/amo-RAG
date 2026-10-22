@@ -18,6 +18,10 @@ const STATUS = {
   UPLOADED: { text: '已上传,等待切片', type: 'info' },
   PARSING: { text: '解析中', type: 'warning' },
   CHUNKED: { text: '已切片(未向量化)', type: 'warning' },
+  // READY / EMBEDDING 后端还没开始写(已登记的缺口),这里先映射好:
+  // 等后端把状态机补齐时,前端不需要跟着改一次
+  EMBEDDING: { text: '向量化中', type: 'warning' },
+  READY: { text: '可检索', type: 'success' },
   FAILED: { text: '失败', type: 'danger' },
 }
 

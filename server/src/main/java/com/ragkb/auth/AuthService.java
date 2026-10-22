@@ -10,6 +10,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+
 /**
  * 注册与登录。
  *
@@ -34,6 +36,7 @@ public class AuthService {
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
+    private final LoginAttemptLimiter attemptLimiter;
 
     /**
      * 注册并直接登录(返回令牌,省掉注册后再调一次登录)。
@@ -61,6 +64,8 @@ public class AuthService {
      * @throws ApiException 401 凭据不对
      */
     public AuthResponse login(String username, String password) {
+        // 先查限流:被锁期间连库都不查,省一次查询,也避免"锁定时响应更快"这种时序差异
+        attemptLimiter.checkAllowed(username, Instant.now());
         UserEntity entity = userMapper.selectOne(new LambdaQueryWrapper<UserEntity>()
                 .eq(UserEntity::getUsername, username));
         // 用户不存在时仍然做一次哈希比对,让两条失败路径的耗时接近 ——
@@ -68,8 +73,10 @@ public class AuthService {
         String hash = entity == null ? DUMMY_HASH : entity.getPasswordHash();
         boolean matched = passwordEncoder.matches(password, hash);
         if (entity == null || !matched) {
+            attemptLimiter.recordFailure(username, Instant.now());
             throw new ApiException(401, "用户名或密码错误");
         }
+        attemptLimiter.clear(username);
         log.info("user logged in: id={}, username={}", entity.getId(), username);
         return issue(entity);
     }

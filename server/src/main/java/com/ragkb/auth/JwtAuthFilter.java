@@ -26,6 +26,14 @@ import java.util.List;
  * <h2>为什么是 OncePerRequestFilter</h2>
  * 请求可能在容器内部转发(例如 ERROR 派发),普通 Filter 会跑两遍。
  * 这个类只做无副作用的解析,跑两遍不会错,但"只跑一遍"是更省的默认假设。
+ *
+ * <h2>这个 Filter 只能被注册一次</h2>
+ * 它既是 {@code @Component}(会被 Boot 自动注册进 servlet 全局链),又被
+ * {@code SecurityConfig.addFilterBefore} 放进 security chain。两处注册会导致同一实例跑两遍,
+ * 而"现在没事"依赖 security chain 的 order 更靠前这个巧合 —— 顺序一旦反了,
+ * 全局那份设的认证会被 security chain 的 {@code SecurityContextHolderFilter} 清空,
+ * 结果是所有接口静默 401。{@code SecurityConfig.jwtAuthFilterRegistration} 用
+ * {@code setEnabled(false)} 关掉了自动注册,改动这里之前先看那处注释。
  */
 @Component
 @RequiredArgsConstructor

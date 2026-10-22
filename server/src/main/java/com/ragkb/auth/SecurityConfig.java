@@ -4,6 +4,7 @@ import com.ragkb.common.AuthProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -32,6 +33,13 @@ import java.io.IOException;
  * 因此不存在"跨站请求自动带上凭据"的前提,CSRF 防护没有对象。
  * 关掉 session 之后每个请求都要重新校验令牌,也就不存在"服务端会话被固定"的问题。
  *
+ * <h2>为什么不配 CORS</h2>
+ * 前端开发期由 Vite 代理 {@code /api},生产由反向代理把前端与 API 挂在同一域名下 ——
+ * 浏览器看到的始终是同源请求。配一套 CORS 等于主动开一个当前不需要的跨域口子,
+ * 而放行规则一旦写松(例如 {@code allowedOriginPatterns("*")}),就等于把令牌暴露给任意站点。
+ * 将来真要跨域部署,再连同 {@code allowedOriginPatterns} 与预检缓存一起加,而不是留一行
+ * 半套的 {@code OPTIONS permitAll} 让人以为已经处理过。
+ *
  * <h2>401 与 403 为什么分开</h2>
  * 两者的处理方式完全不同:401 该跳登录页,403 该提示"没权限,换个账号"。
  * 统一返回 401 会让前端在权限不足时反复重定向,看起来像登录状态丢了。
@@ -53,10 +61,12 @@ public class SecurityConfig {
                 // 无状态:不建会话、不写 cookie,令牌失效就只能重新登录
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 预检请求不带凭据,拦掉它会让浏览器直接报跨域错,而错误信息毫无指向性
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // 登录/注册本身不能要令牌;探活与错误页给运维和容器探测用
-                        .requestMatchers("/api/auth/**", "/health", "/error").permitAll()
+                        // 白名单只列具体路径,不用 /api/auth/** 这种通配:
+                        // 将来 auth 包下加"改密码""注销全部会话"时,通配会把它们一起公开,
+                        // 而那种失误没有任何提示 —— 与"默认拒绝"要防的正是同一类事情
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                        // 探活与错误页给运维和容器探测用
+                        .requestMatchers("/health", "/error").permitAll()
                         // 其余一律需要身份 —— 包括将来新加的接口,不需要记得加注解
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
@@ -66,6 +76,27 @@ public class SecurityConfig {
                                 writeError(response, 403, "没有访问该资源的权限")))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    /**
+     * 把 {@link JwtAuthFilter} 从 servlet 容器的全局过滤器链里摘掉。
+     *
+     * <h2>为什么需要这个 Bean</h2>
+     * 它同时是 {@code @Component}(Boot 会把每个 Filter Bean 自动注册进全局链)和
+     * 被 {@code addFilterBefore} 塞进 security chain —— <b>同一个实例被注册两次</b>。
+     * 现在没出问题靠两个巧合:security chain 的 order(-100)先执行并设好认证;
+     * 全局那份随后被 OncePerRequestFilter 的 already-filtered 标记跳过。
+     *
+     * 一旦有人给这个 Filter 加 {@code @Order} 提升优先级,执行顺序就反过来:
+     * 全局那份先设认证 → security chain 的 {@code SecurityContextHolderFilter} 把它清空 →
+     * chain 内那份因 already-filtered 被跳过 → <b>所有接口静默 401</b>,而且改的那行看起来无害。
+     * 显式禁用自动注册,把这个巧合变成明确约定。
+     */
+    @Bean
+    public FilterRegistrationBean<JwtAuthFilter> jwtAuthFilterRegistration(JwtAuthFilter filter) {
+        FilterRegistrationBean<JwtAuthFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     /**

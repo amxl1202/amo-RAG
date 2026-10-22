@@ -37,7 +37,8 @@ class AuthServiceTest {
         properties.setSecret("test-secret-0123456789abcdef0123456789abcdef");
         properties.setTtlMinutes(60);
         properties.setIssuer("amo-rag");
-        authService = new AuthService(userMapper, encoder, new JwtTokenProvider(properties));
+        authService = new AuthService(userMapper, encoder, new JwtTokenProvider(properties),
+                new LoginAttemptLimiter());
     }
 
     @Test

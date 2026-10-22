@@ -1,6 +1,6 @@
 # 接手文档（给下一个会话看）
 
-> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**195 个全绿，0 跳过**
+> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**202 个全绿，0 跳过**
 > 这份文件的目的：让任何一个新会话在 5 分钟内知道"现在在哪、下一步做什么、哪些坑别再踩"。
 > 它不替代 `PLAN.md`（那是完整计划），只做交接。
 
@@ -10,7 +10,7 @@
 
 **L1 + L2 全部打通**：浏览器登录 → 上传 → 解析 → 切片 → 向量化 → 双通道检索 → RRF →
 门控 → 提示词 → 生成 → 引用解析 → 自检 → 拒答 → 点引用看原文。
-后端 195 个测试全绿，前端有 6 张真实截图在 `docs/screenshots/`。
+后端 202 个测试全绿，前端有 6 张真实截图在 `docs/screenshots/`。
 **剩下的是 L3（可选增强）与已登记的 P2 项。**
 
 ---
@@ -72,6 +72,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 | **D20 基线** | `docs/eval-baseline.md`、评估集 10 → 59 条 | 见 git log |
 | **D21–D22 认证** | JWT + 默认拒绝链 + 注册/登录 + BCrypt | 见 git log |
 | **D23–D25 前端** | Vue3 + Vite + Element Plus，答案带可点引用 | 见 git log |
+| **审核第六批** | 过滤器双重注册、测试口径统一、白名单收窄、登录限流、指标改名 | 见 git log |
 
 **库里现在有**：5 份文档、42 个切片、42 条 512 维向量（`text-embedding-v3`）。
 
@@ -98,7 +99,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 
 | 项 | 数值 | 含义 |
 |---|---|---|
-| 测试规模 | **176 个** | 0 失败；库没起时 6 个 skip |
+| 测试规模 | **202 个** | 0 失败；库没起时 13 个 skip（6 个真库用例 + 7 条安全链路） |
 | token 倍率（embedding） | **0.776** | 本地 cl100k 对 embedding 输入高估 |
 | token 倍率（chat 提示词） | **0.666 / 0.653** | 生成输入高估约 1/3，比 embedding 更低 |
 | 检索（59 条） | HYBRID k=60：recall@5 **1.0** / MRR **0.8483**；纯向量 0.9388 / 0.7657 | 融合首次**真正**超过单通道 |
@@ -142,7 +143,16 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
     解法：把 `node_modules` 物理放到 `C://Users//25161//AppData//Local//rag-web//node_modules`，
     在 `web\` 下建 junction 指回去（`New-Item -ItemType Junction`）。
     重新 `npm install` 会重建目录，若又报这个错，重做一次 junction。
-19. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
+19. **Spring Security 的 Filter 会注册两次**：一个 `@Component` 的 Filter Bean 既被 Boot 自动注册进
+    servlet 全局链，又被 `addFilterBefore` 放进 security chain。现在没出事靠"security chain 的 order
+    更靠前"这个巧合；一旦给它加 `@Order`，全局那份先设的认证会被 `SecurityContextHolderFilter`
+    清空，结果是**所有接口静默 401**。解法：`FilterRegistrationBean.setEnabled(false)` 显式关掉自动注册。
+20. **`@SpringBootTest` 连不上库是 Error 不是 Skip**：容器在用例执行前就加载，`Assumptions` 拦不住。
+    用 `@ExtendWith(DatabaseAvailableCondition)`（端口探测）在容器启动前决定跳不跳；
+    条件是"端口通"而不是"表存在"——库起了但 schema 有问题时应当红，不能被 skip 掉。
+21. **环境代理会把 localhost 也代理掉**：`curl http://localhost:8080/health` 返回 502 时，
+    先加 `--noproxy '*'` 或设 `NO_PROXY`，别急着判"后端挂了"。
+22. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
     `@AutoConfigureMockMvc`，`TestRestTemplate` 也不在 `spring-boot-test` 里）。
     所以认证的端到端验收用 `@SpringBootTest(RANDOM_PORT)` + JDK `HttpClient` 真打端口，没有引入新依赖。
 

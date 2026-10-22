@@ -40,9 +40,11 @@ import java.util.Map;
  * <ul>
  *   <li><b>引用正确率</b> = 引用到的切片里,同时含该题全部期望词的比例。
  *       分母是引用总条数,不是题目数 —— 一条答案引了三条、其中两条错的,要能体现出来。</li>
- *   <li><b>答案支持率</b> = 自检判定"有材料支撑"的句子 / 参与自检的句子。
- *       <b>判定者是自检模型,不是人工</b>:它衡量的是"生成文本有多少通过了自家校验",
- *       不是"答案客观正确率"。这个区别必须在报告里写清,否则会被读成后者。</li>
+ *   <li><b>自检通过率</b> = 自检判定"有材料支撑"的句子 / 参与自检的句子。
+ *       名字里刻意不出现"答案准确率":判定者与被测者是同一个模型,它衡量的是
+ *       "生成文本有多少通过了自家校验",不是客观正确率。
+ *       早先叫"答案支持率",每次输出都得跟一句括号声明才能不被误读 ——
+ *       <b>一个需要现场免责声明的指标名就是错的名字</b>,已改。</li>
  *   <li><b>拒答准确率</b> = 文档外问题里被正确拒答的比例。</li>
  *   <li><b>误拒率</b> = 文档内问题里被错误拒答的比例。它和拒答准确率方向相反,
  *       只看其中一个就能把系统调成"全都拒答"或"全都作答"。</li>
@@ -137,7 +139,7 @@ public final class AnswerEval {
         System.out.println("---- 生成层指标 ----");
         System.out.printf("  引用正确率   %.4f  (%d/%d 条引用命中期望词)%n",
                 metrics.citationPrecision, metrics.correctCitations, metrics.totalCitations);
-        System.out.printf("  答案支持率   %.4f  (自检保留 %d/%d 句;判定者是自检模型,不是人工)%n",
+        System.out.printf("  自检通过率   %.4f  (保留 %d/%d 句;判定者与被测者是同一个模型)%n",
                 metrics.answerSupportRate, metrics.keptSentences, metrics.judgedSentences);
         System.out.printf("  拒答准确率   %.4f  (%d/%d 条文档外问题被正确拒答)%n",
                 metrics.refusalAccuracy, metrics.correctRefusals, metrics.outOfScope);
