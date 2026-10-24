@@ -96,3 +96,25 @@ CREATE TABLE IF NOT EXISTS users (
     -- 用户名唯一:并发注册同一用户名时靠它兜底,而不是靠"先查再插"的间隙
     CONSTRAINT uk_users_username UNIQUE (username)
 );
+
+-- 刷新令牌:不透明随机串,库里只存 SHA-256 哈希
+-- 为什么不用 JWT:refresh 需要"可吊销、可检测重放",而 JWT 是无状态的 ——
+-- 要让它可吊销就得再存一张表,那不如一开始就存表,顺带省掉签名开销。
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    -- 只存哈希:库被读走时拿不到可用令牌(与密码同理)
+    token_hash VARCHAR(64) NOT NULL,
+    -- 同一次登录派生的令牌属于同一族:检测到重放时吊销整族,而不是只吊销那一个
+    family_id  UUID        NOT NULL,
+    issued_at  TIMESTAMP   NOT NULL DEFAULT now(),
+    expires_at TIMESTAMP   NOT NULL,
+    -- 被用掉的时刻。非空即说明它已经被轮换过,再出现就是重放
+    used_at    TIMESTAMP,
+    revoked_at TIMESTAMP,
+
+    CONSTRAINT uk_refresh_tokens_hash UNIQUE (token_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens (family_id);

@@ -51,6 +51,34 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY)
 }
 
+/**
+ * 用 httpOnly cookie 里的刷新令牌换一个新的访问令牌。
+ *
+ * <p>"同时在飞只允许一个":页面加载时会并发好几个请求,如果每个 401 都去刷新,
+ * 就会拿同一枚刷新令牌并发提交 —— 服务端会把它判成重放并吊销整族,用户直接被踢下线。
+ * 所以用一个共享的 Promise 把并发收敛成一次。
+ */
+let refreshing = null
+
+export async function tryRefresh() {
+  if (!refreshing) {
+    refreshing = fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload) => {
+              if (payload && payload.code === 0) {
+                saveSession(payload.data)
+                return payload.data
+              }
+              return null
+            })
+            .catch(() => null)
+            .finally(() => {
+              refreshing = null
+            })
+  }
+  return refreshing
+}
+
 async function request(path, { method = 'GET', body, form } = {}) {
   const headers = {}
   if (!form) {
@@ -61,13 +89,15 @@ async function request(path, { method = 'GET', body, form } = {}) {
     headers.Authorization = `Bearer ${token}`
   }
 
+  const send = () => fetch(path, {
+    method,
+    headers,
+    body: form ? body : body === undefined ? undefined : JSON.stringify(body),
+  })
+
   let response
   try {
-    response = await fetch(path, {
-      method,
-      headers,
-      body: form ? body : body === undefined ? undefined : JSON.stringify(body),
-    })
+    response = await send()
   } catch (e) {
     // 网络层失败时 fetch 抛的是 TypeError,文案是 "Failed to fetch",对用户没有信息量
     throw new ApiError('无法连接服务,请确认后端已启动', 0)
@@ -75,9 +105,18 @@ async function request(path, { method = 'GET', body, form } = {}) {
 
   const isAuthPath = path.startsWith('/api/auth')
   if (response.status === 401 && !isAuthPath) {
-    clearSession()
-    sessionExpiredHandler()
-    throw new ApiError('登录已失效,请重新登录', 401)
+    // 访问令牌 30 分钟就过期,先用手上的刷新令牌静默换一次,换到了就把原请求重放一遍 ——
+    // 用户不该因为"正好在第 31 分钟点了一下"就看见登录页
+    const renewed = await tryRefresh()
+    if (renewed) {
+      headers.Authorization = `Bearer ${renewed.token}`
+      response = await send()
+    }
+    if (response.status === 401) {
+      clearSession()
+      sessionExpiredHandler()
+      throw new ApiError('登录已失效,请重新登录', 401)
+    }
   }
 
   const text = await response.text()
@@ -199,5 +238,7 @@ export const api = {
   ingest: (id) => request(`/api/documents/${id}/ingest`, { method: 'POST' }),
   vectorize: (id) => request(`/api/documents/${id}/vectorize`, { method: 'POST' }),
   ask: (question) => request('/api/qa', { method: 'POST', body: { question } }),
+  logout: () => fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+          .catch(() => null),
   askStream,
 }

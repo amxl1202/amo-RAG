@@ -7,7 +7,7 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { clearSession, currentUser } from './api'
+import { api, clearSession, currentUser } from './api'
 
 const route = useRoute()
 const router = useRouter()

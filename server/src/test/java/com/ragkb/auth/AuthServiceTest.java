@@ -27,6 +27,7 @@ import static org.mockito.Mockito.when;
 class AuthServiceTest {
 
     private UserMapper userMapper;
+    private RefreshTokenService refreshTokenService;
     private AuthService authService;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
@@ -37,8 +38,11 @@ class AuthServiceTest {
         properties.setSecret("test-secret-0123456789abcdef0123456789abcdef");
         properties.setTtlMinutes(60);
         properties.setIssuer("amo-rag");
+        refreshTokenService = org.mockito.Mockito.mock(RefreshTokenService.class);
+        org.mockito.Mockito.when(refreshTokenService.issueNewFamily(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(new RefreshTokenService.Issued("refresh-raw", 0L, java.util.UUID.randomUUID()));
         authService = new AuthService(userMapper, encoder, new JwtTokenProvider(properties),
-                new LoginAttemptLimiter());
+                new LoginAttemptLimiter(), refreshTokenService);
     }
 
     @Test
@@ -50,7 +54,8 @@ class AuthServiceTest {
             return 1;
         });
 
-        AuthResponse response = authService.register("alice", "s3cret-pass");
+        AuthService.Session session = authService.register("alice", "s3cret-pass");
+        AuthResponse response = session.response();
 
         ArgumentCaptor<UserEntity> captor = ArgumentCaptor.forClass(UserEntity.class);
         verify(userMapper).insert(captor.capture());
@@ -61,6 +66,8 @@ class AuthServiceTest {
         assertThat(response.token()).isNotBlank();
         assertThat(response.username()).isEqualTo("alice");
         assertThat(response.expiresInSeconds()).isEqualTo(3600);
+        // 刷新令牌走 cookie,不放进响应体 —— 放进去就会诱使前端存 localStorage
+        assertThat(session.refreshToken()).isNotNull();
     }
 
     @Test
@@ -83,7 +90,7 @@ class AuthServiceTest {
         existing.setRole("USER");
         when(userMapper.selectOne(any())).thenReturn(existing);
 
-        AuthResponse response = authService.login("bob", "correct-horse");
+        AuthResponse response = authService.login("bob", "correct-horse").response();
 
         assertThat(response.token()).isNotBlank();
         AuthProperties properties = new AuthProperties();

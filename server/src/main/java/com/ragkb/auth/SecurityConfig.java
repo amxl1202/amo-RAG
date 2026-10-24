@@ -66,7 +66,8 @@ public class SecurityConfig {
                         // 而那种失误没有任何提示 —— 与"默认拒绝"要防的正是同一类事情。
                         // 这里不限定 HTTP 方法:限定成 POST 会让 GET 落进 anyRequest 变成 401,
                         // 而"登录接口要鉴权"是个误导;放开后 GET 会正常得到 405(方法不允许)
-                        .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/register",
+                                "/api/auth/refresh", "/api/auth/logout").permitAll()
                         // 探活与错误页给运维和容器探测用
                         .requestMatchers("/health", "/error").permitAll()
                         // 其余一律需要身份 —— 包括将来新加的接口,不需要记得加注解

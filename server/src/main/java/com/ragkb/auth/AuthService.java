@@ -38,13 +38,23 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final LoginAttemptLimiter attemptLimiter;
+    private final RefreshTokenService refreshTokenService;
+
+    /**
+     * 一次成功认证的产物:给客户端的访问令牌 + 只出现一次的刷新令牌。
+     *
+     * <p>刷新令牌不放进响应体的 DTO 里,是因为它要走 httpOnly cookie —— 放进 body 会诱使前端
+     * 存到 localStorage,那就等于把"XSS 拿不到"这个好处丢掉了。
+     */
+    public record Session(AuthResponse response, String refreshToken) {
+    }
 
     /**
      * 注册并直接登录(返回令牌,省掉注册后再调一次登录)。
      *
      * @throws ApiException 409 用户名已存在
      */
-    public AuthResponse register(String username, String password) {
+    public Session register(String username, String password) {
         requireBcryptLength(password);
         UserEntity entity = new UserEntity();
         entity.setUsername(username);
@@ -57,7 +67,7 @@ public class AuthService {
             throw ApiException.conflict("用户名已被占用");
         }
         log.info("user registered: id={}, username={}", entity.getId(), username);
-        return issue(entity);
+        return issueSession(entity);
     }
 
     /**
@@ -65,7 +75,7 @@ public class AuthService {
      *
      * @throws ApiException 401 凭据不对
      */
-    public AuthResponse login(String username, String password) {
+    public Session login(String username, String password) {
         // 登录侧也要查:超长口令会走到 passwordEncoder.matches,那里同样会抛
         requireBcryptLength(password);
         // 先查限流:被锁期间连库都不查,省一次查询,也避免"锁定时响应更快"这种时序差异
@@ -82,7 +92,7 @@ public class AuthService {
         }
         attemptLimiter.clear(username);
         log.info("user logged in: id={}, username={}", entity.getId(), username);
-        return issue(entity);
+        return issueSession(entity);
     }
 
     /**
@@ -116,8 +126,33 @@ public class AuthService {
         }
     }
 
-    private AuthResponse issue(UserEntity entity) {
+    private Session issueSession(UserEntity entity) {
         AuthPrincipal principal = new AuthPrincipal(entity.getId(), entity.getUsername(), entity.getRole());
-        return AuthResponse.of(tokenProvider.issue(principal), tokenProvider.ttlSeconds(), principal);
+        AuthResponse access = AuthResponse.of(tokenProvider.issue(principal), tokenProvider.ttlSeconds(), principal);
+        // 每次登录开一个新族:同一账号在不同设备上的会话互不影响,
+        // 一台设备检测到重放时不会把另一台的登录也踢掉
+        RefreshTokenService.Issued refresh = refreshTokenService.issueNewFamily(entity.getId());
+        return new Session(access, refresh.raw());
+    }
+
+    /**
+     * 用刷新令牌换一对新令牌(轮换)。
+     *
+     * @throws ApiException 401,原因可能是失效、过期或检测到重放
+     */
+    public Session refresh(String rawRefreshToken) {
+        RefreshTokenService.Rotated rotated = refreshTokenService.rotate(rawRefreshToken);
+        UserEntity entity = userMapper.selectById(rotated.userId());
+        if (entity == null) {
+            throw new ApiException(401, "用户不存在,请重新登录");
+        }
+        AuthPrincipal principal = new AuthPrincipal(entity.getId(), entity.getUsername(), entity.getRole());
+        AuthResponse access = AuthResponse.of(tokenProvider.issue(principal), tokenProvider.ttlSeconds(), principal);
+        return new Session(access, rotated.raw());
+    }
+
+    /** 退出登录:只吊销当前这一族,其它设备照常。 */
+    public void logout(String rawRefreshToken) {
+        refreshTokenService.revokeFamily(rawRefreshToken);
     }
 }

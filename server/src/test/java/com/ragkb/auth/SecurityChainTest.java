@@ -84,6 +84,25 @@ class SecurityChainTest {
         return matcher.group(1);
     }
 
+    /** 从 Set-Cookie 里取刷新令牌的原文(cookie 前缀在测试里也要按真实格式解析)。 */
+    private static String refreshCookie(HttpResponse<String> response) {
+        return response.headers().allValues("set-cookie").stream()
+                .filter(value -> value.startsWith("refresh_token="))
+                .map(value -> value.substring("refresh_token=".length(), value.indexOf(';')))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private HttpResponse<String> postWithCookie(String path, String cookie) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+                .timeout(Duration.ofSeconds(20))
+                .header("Content-Type", "application/json")
+                .header("Cookie", "refresh_token=" + cookie)
+                .POST(HttpRequest.BodyPublishers.ofString("{}", StandardCharsets.UTF_8))
+                .build();
+        return CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
     private void deleteUser(String username) {
         userMapper.delete(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getUsername, username));
     }
@@ -165,5 +184,36 @@ class SecurityChainTest {
                 .satisfiesAnyOf(
                         body -> assertThat(body).contains("用户名"),
                         body -> assertThat(body).contains("密码"));
+    }
+
+    @Test
+    @DisplayName("刷新:换新令牌;旧令牌再提交一次被判重放,并连带吊销刚换到的新令牌")
+    void refreshRotatesAndRevokesFamilyOnReplay() throws Exception {
+        String username = "it_refresh_" + System.nanoTime();
+        try {
+            String body = "{\"username\":\"" + username + "\",\"password\":\"s3cret-pass\"}";
+            HttpResponse<String> registered = postJson("/api/auth/register", body);
+            String firstCookie = refreshCookie(registered);
+            assertThat(firstCookie).as("登录/注册必须下发刷新 cookie").isNotBlank();
+            assertThat(registered.headers().allValues("set-cookie").toString())
+                    .as("cookie 必须 httpOnly —— 否则 XSS 能读走它")
+                    .containsIgnoringCase("HttpOnly");
+
+            // 正常轮换:拿到新 cookie
+            HttpResponse<String> rotated = postWithCookie("/api/auth/refresh", firstCookie);
+            assertThat(rotated.statusCode()).as(rotated.body()).isEqualTo(200);
+            String secondCookie = refreshCookie(rotated);
+            assertThat(secondCookie).isNotBlank().isNotEqualTo(firstCookie);
+
+            // 拿旧 cookie 再刷一次:重放
+            HttpResponse<String> replay = postWithCookie("/api/auth/refresh", firstCookie);
+            assertThat(replay.statusCode()).isEqualTo(401);
+            assertThat(replay.body()).contains("重放");
+
+            // 整族被吊销:刚换到的新 cookie 也不能再用
+            assertThat(postWithCookie("/api/auth/refresh", secondCookie).statusCode()).isEqualTo(401);
+        } finally {
+            deleteUser(username);
+        }
     }
 }

@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { getToken } from './api'
+import { getToken, tryRefresh } from './api'
 import LoginView from './views/LoginView.vue'
 import HomeView from './views/HomeView.vue'
 import DocumentsView from './views/DocumentsView.vue'
@@ -26,14 +26,17 @@ const router = createRouter({
  * 前端守卫只是体验层:它挡住"没登录就进页面"的白屏,不承担安全职责。
  * 真正的边界在服务端过滤器链上 —— 前端代码可以被绕过,后端不能。
  */
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (to.meta.public) {
     return true
   }
-  if (!getToken()) {
-    return { name: 'login', query: { redirect: to.fullPath } }
+  if (getToken()) {
+    return true
   }
-  return true
+  // 访问令牌可能只是过期了(30 分钟),而刷新 cookie 还有效 —— 先静默换一次,
+  // 换到了就当作已登录,别把"刷新一下页面"变成"重新输密码"
+  const renewed = await tryRefresh()
+  return renewed ? true : { name: 'login', query: { redirect: to.fullPath } }
 })
 
 export default router

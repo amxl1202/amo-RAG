@@ -72,9 +72,13 @@ app:
   # 而不是等到第一次登录才炸 —— 后者会让"服务起来了但没人能登录"拖延很久才被发现
   auth:
     secret: ${JWT_SECRET:}
-    # 2 小时。单角色演示形态下够用;真要上线应当缩短到 15~30 分钟并配 refresh 轮换
-    ttl-minutes: ${JWT_TTL_MINUTES:120}
+    # 访问令牌 30 分钟(教科书通常 15,本地演示取 30 以减少打断;生产改这里即可)
+    ttl-minutes: ${JWT_TTL_MINUTES:30}
     issuer: ${JWT_ISSUER:amo-rag}
+    # 刷新令牌 7 天,轮换时换新、旧的一律作废
+    refresh-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
+    # 生产(https)必须置 true,否则刷新 cookie 会被浏览器丢弃
+    cookie-secure: ${JWT_COOKIE_SECURE:false}
   retrieval:
     # 单通道超时:超过就降级为空列表,另一路照常用
     timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}
