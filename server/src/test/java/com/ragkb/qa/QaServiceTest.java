@@ -234,4 +234,23 @@ class QaServiceTest {
                 .as("展示文本里已经没有 E1,引用面板就不能再挂它")
                 .containsExactly("E2");
     }
+
+    @Test
+    @DisplayName("流式路径的定稿与逐字增量都在,且引用与非流式一致")
+    void streamingEmitsDeltasAndSameFinalAnswer() {
+        ScriptedModel model = new ScriptedModel("第一句[E1]。", "{\"unsupported\":[]}");
+        List<ScoredChunk> hits = List.of(chunk(1, "材料正文甲。", 0.72));
+        QaService service = service(
+                (q, limit) -> hits,
+                (q, limit) -> hits,
+                model);
+        StringBuilder streamed = new StringBuilder();
+
+        QaAnswer answer = service.ask("问题", streamed::append);
+
+        assertThat(answer.status()).isEqualTo(QaAnswer.Status.ANSWERED);
+        // 假模型没有流式能力,走默认实现:整段一次给完,调用方看到的仍是"文本在增长"
+        assertThat(streamed.toString()).isEqualTo("第一句[E1]。");
+        assertThat(answer.citations()).extracting(Citation::label).containsExactly("E1");
+    }
 }

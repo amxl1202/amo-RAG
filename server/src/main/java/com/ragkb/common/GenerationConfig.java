@@ -69,6 +69,18 @@ public class GenerationConfig {
         });
     }
 
+    /**
+     * 流式问答的执行器:一条虚拟线程服务一条流。
+     *
+     * <p>每条流从头到尾都在等 IO(等模型吐字),用平台线程池要么把池子占满、要么限制并发数;
+     * 虚拟线程的成本近似对象,可以"一条流一条线程",写起来还是阻塞式代码。
+     * 这是 Java 21 之后这类场景的标准解法 —— 需要在 Java 25 + Boot 4 上才这么写,降版本就没有。
+     */
+    @Bean(destroyMethod = "close")
+    public java.util.concurrent.ExecutorService qaStreamExecutor() {
+        return java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+    }
+
     /** 编排。跑批工具用同一套装配方式手工 new,保证"评估跑的"与"线上跑的"是同一段逻辑。 */
     @Bean
     public QaService qaService(HybridRetriever hybridRetriever, RrfFuser rrfFuser,

@@ -24,4 +24,26 @@ public interface ChatModel {
      * @throws ChatException 调用失败或响应不可解析
      */
     ChatResponse complete(String systemPrompt, String userPrompt);
+
+    /**
+     * 流式生成:每产出一段增量就回调一次,返回的仍是完整答案。
+     *
+     * <h2>默认实现为什么是"一次性给完"</h2>
+     * 接口有默认实现,测试里的 lambda 假模型就不用关心流式 ——
+     * 它们没有网络,分片没有意义。而真实客户端覆盖这个方法,
+     * 于是"能不能流"变成一个可替换的能力,而不是所有实现都必须支持的义务。
+     *
+     * <p>调用方要能接受两种情况:收到很多次小增量,或只收到一次全量。
+     * 前端不需要区分 —— 两种都是"文本在增长"。
+     *
+     * @param onDelta 增量回调,按到达顺序调用
+     */
+    default ChatResponse stream(String systemPrompt, String userPrompt,
+                                java.util.function.Consumer<String> onDelta) {
+        ChatResponse response = complete(systemPrompt, userPrompt);
+        if (!response.content().isEmpty()) {
+            onDelta.accept(response.content());
+        }
+        return response;
+    }
 }

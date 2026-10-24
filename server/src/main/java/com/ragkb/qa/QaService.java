@@ -72,6 +72,21 @@ public class QaService {
      * @return 答案与全部中间量;模型故障时返回 {@link QaAnswer.Status#FAILED},不抛异常
      */
     public QaAnswer ask(String question) {
+        return ask(question, delta -> {
+        });
+    }
+
+    /**
+     * 流式版:生成过程中的增量通过 {@code onDelta} 流出,返回值与 {@link #ask(String)} 完全一致。
+     *
+     * <h2>增量流的是"未定稿文本"</h2>
+     * 生成结束后还有自检,被判定无支撑的句子会被删掉。所以这里推出去的增量只能算
+     * "候选答案",调用方(SSE 层)必须把它标成待校验,并在拿到返回值后用定稿文本覆盖。
+     * 这一点是这个项目与"纯流式"的根本差别:承诺可溯源,就不能在自检之前假装定稿。
+     *
+     * @param onDelta 增量回调,按模型产出顺序调用
+     */
+    public QaAnswer ask(String question, java.util.function.Consumer<String> onDelta) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("问题不能为空");
         }
@@ -106,7 +121,7 @@ public class QaService {
         long answerStarted = System.nanoTime();
         GeneratedAnswer generated;
         try {
-            generated = generator.generate(prompt);
+            generated = generator.generate(prompt, onDelta);
         } catch (ChatException e) {
             // 服务故障与拒答是两件事:前者该重试/报警,后者是正确行为
             return new QaAnswer(question, QaAnswer.Status.FAILED, "",

@@ -14,7 +14,7 @@
  * - answerMillis 含"生成 + 自检"两次调用,标注为"回答",不是"生成";
  * - REFUSED 是 200 里的业务结果,渲染成中性样式,不是红色报错。
  */
-import { nextTick, ref } from 'vue'
+import { nextTick, reactive, ref } from 'vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { ElMessage } from 'element-plus'
@@ -81,24 +81,47 @@ async function ask(text) {
   question.value = ''
   lastQuestion.value = content
   loading.value = true
+  // 先占位一条"流式中"的消息:增量直接写进它,拿到 final 后原地替换。
+  // 用 reactive 而不是整条替换,是因为 delta 回调持有的是这个对象引用 ——
+  // 替换数组元素会让后续增量写到一个已经不在页面上的对象里,表现是"只显示了前几个字"
+  const draft = reactive({
+    role: 'assistant',
+    status: 'STREAMING',
+    raw: '',
+    text: '',
+    html: '',
+    citations: [],
+    meta: '',
+  })
+  messages.value.push(draft)
   scrollToBottom()
   try {
-    const answer = await api.ask(content)
-    messages.value.push({
-      role: 'assistant',
-      text: answer.answer,
-      html: answer.status === 'ANSWERED' ? toHtml(answer.answer) : '',
-      status: answer.status,
-      reason: answer.reason,
-      citations: answer.citations || [],
-      meta: metaText(answer),
+    const answer = await api.askStream(content, {
+      onDelta: (piece) => {
+        draft.raw += piece
+        scrollToBottom()
+      },
+      onFinal: (final) => {
+        Object.assign(draft, {
+          status: final.status,
+          text: final.answer,
+          raw: final.answer,
+          html: final.status === 'ANSWERED' ? toHtml(final.answer) : '',
+          reason: final.reason,
+          citations: final.citations || [],
+          meta: metaText(final),
+        })
+      },
     })
+    if (!answer) {
+      throw new Error('连接中断,未收到定稿')
+    }
   } catch (e) {
     ElMessage.error(e.message)
-    messages.value.push({
-      role: 'assistant',
-      text: `调用失败：${e.message}`,
+    Object.assign(draft, {
       status: 'FAILED',
+      text: `调用失败：${e.message}`,
+      html: '',
       citations: [],
     })
   } finally {
@@ -231,7 +254,8 @@ function pageText(citation) {
           <div class="amsg__body">
             <header class="amsg__head">
               <span class="amsg__role">amo-RAG</span>
-              <span v-if="message.status === 'ANSWERED'" class="status-tag status-tag--ok">有依据</span>
+              <span v-if="message.status === 'STREAMING'" class="status-tag status-tag--pending">校验中</span>
+              <span v-else-if="message.status === 'ANSWERED'" class="status-tag status-tag--ok">有依据</span>
               <span v-else-if="message.status === 'REFUSED'" class="status-tag status-tag--refuse">已拒答</span>
               <span v-else class="status-tag status-tag--fail">服务异常</span>
               <span v-if="message.meta" class="amsg__meta">{{ message.meta }}</span>
@@ -274,6 +298,11 @@ function pageText(citation) {
             </div>
 
             <!-- 正常回答:markdown 渲染,点击引用编号打开抽屉 -->
+            <!-- 流式阶段先按纯文本渲染:此时还不知道哪几句会被自检删掉,
+                 提前套 markdown 只会在定稿时抖动一次;光标是"还在写"的唯一提示 -->
+            <div v-else-if="message.status === 'STREAMING'" class="answer answer-streaming">
+              {{ message.raw }}<span class="caret" />
+            </div>
             <div v-else class="answer" @click="onAnswerClick($event, message)" v-html="message.html" />
 
             <!-- 引用条 -->
@@ -709,6 +738,11 @@ function pageText(citation) {
   letter-spacing: 0.02em;
 }
 
+.status-tag--pending {
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.1);
+}
+
 .status-tag--ok {
   color: #059669;
   background: rgba(16, 185, 129, 0.1);
@@ -722,6 +756,27 @@ function pageText(citation) {
 .status-tag--fail {
   color: #dc2626;
   background: rgba(239, 68, 68, 0.08);
+}
+
+/* 流式阶段:纯文本 + 光标。等宽不重要,重要的是"还在写"这件事看得见 */
+.answer-streaming {
+  white-space: pre-wrap;
+  color: #4b5563;
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: #4f46e5;
+  animation: caret-blink 1s steps(2) infinite;
+}
+
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* 用户消息 */

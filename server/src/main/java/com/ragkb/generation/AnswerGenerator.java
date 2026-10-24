@@ -31,13 +31,27 @@ public class AnswerGenerator {
      * @throws ChatException 调用失败。上层应当把"服务不可用"与"拒答"分开呈现给用户
      */
     public GeneratedAnswer generate(Prompt prompt) {
+        return generate(prompt, delta -> {
+        });
+    }
+
+    /**
+     * 流式生成:增量通过 {@code onDelta} 流出,返回值仍是完整答案。
+     *
+     * <p>拒答与空答案的判断与非流式完全一致 —— 流式只改变"文本怎么到达调用方",
+     * 不改变"什么样的文本算合格"。这一点必须保持一致,否则同一条答案在流式与
+     * 非流式两条路径上会被判成不同结果。
+     *
+     * @param onDelta 增量回调
+     */
+    public GeneratedAnswer generate(Prompt prompt, java.util.function.Consumer<String> onDelta) {
         if (prompt == null) {
             throw new IllegalArgumentException("提示词不能为空");
         }
         if (prompt.isEmpty()) {
             return GeneratedAnswer.skippedWithoutEvidence();
         }
-        ChatResponse response = model.complete(prompt.systemPrompt(), prompt.userPrompt());
+        ChatResponse response = model.stream(prompt.systemPrompt(), prompt.userPrompt(), onDelta);
         if (response.content().isBlank()) {
             // 客户端已挡过一次,这里再挡:ChatModel 是可替换的(换成本地模型、换实现),
             // 而空答案一旦流到接口层,前端看到的是一个"成功但什么都没有"的响应,

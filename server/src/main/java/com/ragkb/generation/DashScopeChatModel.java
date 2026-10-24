@@ -90,6 +90,117 @@ public class DashScopeChatModel implements ChatModel {
         throw new ChatException("生成失败(已尝试 " + properties.maxAttempts() + " 次): " + lastError, true);
     }
 
+    /**
+     * 流式生成。
+     *
+     * <h2>为什么不在这里重试</h2>
+     * 增量一旦通过 {@code onDelta} 推给用户就收不回来了。重试会产生"前半段重复一遍"的文本,
+     * 而用户看到的是两段拼接 —— 比失败更糟。所以流式路径只尝试一次:
+     * 失败就把异常抛给上层,由 SSE 层发一个 error 事件,让前端**重连并从断点续传**。
+     *
+     * <h2>为什么增量与用量要一起读</h2>
+     * 流式响应的 usage 在最后一个 chunk 里({@code choices} 为空、{@code usage} 有值),
+     * 漏掉它会让成本统计少算这一整次调用 —— 这正是之前自检 token 被丢掉的那个坑。
+     */
+    @Override
+    public ChatResponse stream(String systemPrompt, String userPrompt,
+                               java.util.function.Consumer<String> onDelta) {
+        if (systemPrompt == null || systemPrompt.isBlank()) {
+            throw new IllegalArgumentException("系统提示词不能为空");
+        }
+        if (userPrompt == null || userPrompt.isBlank()) {
+            throw new IllegalArgumentException("用户提示词不能为空");
+        }
+        if (!properties.hasApiKey()) {
+            throw new ChatException("缺少 DASHSCOPE_API_KEY:生成需要调用对话接口,请先在环境变量里配置", false);
+        }
+
+        long startedAt = System.nanoTime();
+        StringBuilder answer = new StringBuilder();
+        int[] promptTokens = {0};
+        int[] completionTokens = {0};
+        boolean[] done = {false};
+
+        HttpPoster.Response response;
+        try {
+            response = poster.postStreaming(properties.endpoint(), authHeaders(),
+                    buildStreamRequestBody(systemPrompt, userPrompt), line -> {
+                        if (line == null || line.isBlank() || done[0]) {
+                            return;
+                        }
+                        if (!line.startsWith("data:")) {
+                            return;
+                        }
+                        String payload = line.substring("data:".length()).trim();
+                        if ("[DONE]".equals(payload)) {
+                            done[0] = true;
+                            return;
+                        }
+                        JsonNode chunk = mapper.readTree(payload);
+                        JsonNode error = chunk.get("error");
+                        if (error != null && !error.isNull()) {
+                            throw new ChatException("流式生成返回错误: " + abbreviate(chunk.toString()), false);
+                        }
+                        JsonNode usage = chunk.get("usage");
+                        if (usage != null && !usage.isNull()) {
+                            promptTokens[0] = intField(usage, "prompt_tokens");
+                            completionTokens[0] = intField(usage, "completion_tokens");
+                        }
+                        JsonNode choices = chunk.get("choices");
+                        if (choices == null || choices.isEmpty()) {
+                            return;
+                        }
+                        JsonNode delta = choices.get(0).get("delta");
+                        if (delta == null) {
+                            return;
+                        }
+                        JsonNode content = delta.get("content");
+                        if (content == null || content.isNull()) {
+                            return;
+                        }
+                        String piece = content.asString();
+                        if (piece.isEmpty()) {
+                            return;
+                        }
+                        answer.append(piece);
+                        onDelta.accept(piece);
+                    });
+        } catch (ChatException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ChatException("流式生成被中断", false, e);
+        } catch (Exception e) {
+            throw new ChatException("流式生成失败: " + e.getClass().getSimpleName()
+                    + " " + e.getMessage(), false, e);
+        }
+
+        if (response.status() != 200) {
+            throw new ChatException("对话接口返回 " + response.status() + ": " + abbreviate(response.body()),
+                    RetryPolicy.isRetryableStatus(response.status()));
+        }
+        if (answer.isEmpty()) {
+            throw new ChatException("流式响应没有产出任何内容", false);
+        }
+        long elapsed = (System.nanoTime() - startedAt) / 1_000_000;
+        return new ChatResponse(answer.toString(), properties.model(),
+                promptTokens[0], completionTokens[0], elapsed);
+    }
+
+    private String buildStreamRequestBody(String systemPrompt, String userPrompt) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", properties.model());
+        payload.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)));
+        payload.put("temperature", properties.temperature());
+        payload.put("max_tokens", properties.maxTokens());
+        payload.put("stream", true);
+        // 不要这一项,最后一个 chunk 里就没有 usage,成本统计会少掉整次调用
+        payload.put("stream_options", Map.of("include_usage", true));
+        return mapper.writeValueAsString(payload);
+    }
+
     private Map<String, String> authHeaders() {
         return Map.of(AUTH_HEADER, "Bearer " + properties.apiKey(), "Content-Type", "application/json");
     }
