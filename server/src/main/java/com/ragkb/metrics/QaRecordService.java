@@ -69,7 +69,7 @@ public class QaRecordService {
         entity.setRetrievalMs((int) Math.min(Integer.MAX_VALUE, answer.retrievalMillis()));
         entity.setAnswerMs((int) Math.min(Integer.MAX_VALUE, answer.answerMillis()));
         entity.setCitationCount(answer.citations().size());
-        entity.setModel(null);
+        entity.setModel(answer.model());
         entity.setCreatedAt(LocalDateTime.now());
         return entity;
     }

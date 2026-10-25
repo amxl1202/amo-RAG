@@ -107,7 +107,7 @@ public class QaService {
                     : QaAnswer.Status.REFUSED;
             String text = status == QaAnswer.Status.FAILED ? "" : PromptBuilder.INSUFFICIENT;
             return new QaAnswer(question, status, text, List.of(), gate, null, List.of(),
-                    0, 0, hits.anyDegraded(), 0, 0, 0, 0, retrievalMillis, 0);
+                    0, 0, hits.anyDegraded(), 0, 0, 0, 0, retrievalMillis, 0, null);
         }
 
         List<ScoredChunk> fused = fuser.fuse(hits.vectorHits(), hits.keywordHits(), RRF_K, channelLimit)
@@ -127,7 +127,7 @@ public class QaService {
             return new QaAnswer(question, QaAnswer.Status.FAILED, "",
                     List.of(), gate, null, List.of(), fused.size(), prompt.citations().size(),
                     hits.anyDegraded(), 0, 0, 0, 0, retrievalMillis,
-                    (System.nanoTime() - answerStarted) / 1_000_000);
+                    (System.nanoTime() - answerStarted) / 1_000_000, null);
         }
 
         ParsedAnswer parsed = new CitationParser().parse(generated.text(), prompt);
@@ -148,6 +148,6 @@ public class QaService {
                 gate, verdict, parsed.unknownLabels(), fused.size(), prompt.citations().size(),
                 hits.anyDegraded(), generated.promptTokens(), generated.completionTokens(),
                 verdict.checkPromptTokens(), verdict.checkCompletionTokens(),
-                retrievalMillis, answerMillis);
+                retrievalMillis, answerMillis, generated.model());
     }
 }

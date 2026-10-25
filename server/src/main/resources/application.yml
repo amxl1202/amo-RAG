@@ -21,6 +21,9 @@ spring:
       max-request-size: 55MB
 
 mybatis-plus:
+  # UUID 类型处理器的注册入口。必须全局扫描:entity 的 insert 与 @Update 的 UUID 参数
+  # 走两条不同的绑定路径,只在字段上加注解只能救前者
+  type-handlers-package: com.ragkb.common.mybatis
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl

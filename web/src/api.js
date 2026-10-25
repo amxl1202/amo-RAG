@@ -142,64 +142,149 @@ async function request(path, { method = 'GET', body, form } = {}) {
  * 把令牌塞进 URL 会进浏览器历史、Referer 和服务端访问日志 —— 那是拿凭据换便利。
  * 所以用 {@code fetch} + {@code ReadableStream} 自己解析 SSE 帧,头部照常带。
  *
- * <h2>为什么要自己拼帧</h2>
- * 一个事件可能跨多个 TCP 包到达,也可能一个包里有两个事件。按 {@code \n\n} 切分、
- * 把不完整的尾巴留在 buffer 里,是 SSE 解析的全部要点;少做这一步,
- * 表现是"偶尔丢几个字",而不会报错。
+ * <h2>三件必须做对的事</h2>
+ * 1. <b>帧要按 {@code \n\n} 切</b>:一个事件可能跨多个网络包到达,也可能一个包里有两个事件。
+ *    把不完整的尾巴留在 buffer 里,是 SSE 解析的全部要点;少做这一步表现为"偶尔丢几个字"。
+ * 2. <b>要消费 {@code open} 事件里的 streamId</b>:它是断线重连的唯一钥匙。
+ * 3. <b>断线要能续传</b>:带着 {@code lastEventId} 回来取,而不是让用户再等一遍三秒;
+ *    访问令牌过期(401)时先静默刷新再重发,不能直接把人踢去登录页。
  *
  * @param {string} question
  * @param {{onDelta?:Function, onFinal?:Function}} handlers
  */
 export async function askStream(question, { onDelta, onFinal } = {}) {
-  const token = getToken()
-  const response = await fetch('/api/qa/stream', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ question }),
-  })
+  const state = { streamId: null, lastEventId: 0, final: null }
 
-  if (response.status === 401) {
-    clearSession()
-    sessionExpiredHandler()
-    throw new ApiError('登录已失效,请重新登录', 401)
-  }
-  if (!response.ok || !response.body) {
-    throw new ApiError(`流式请求失败(${response.status})`, response.status)
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let final = null
-
-  const dispatch = (frame) => {
-    const lines = frame.split('\n')
-    let event = 'message'
-    const dataLines = []
-    for (const line of lines) {
-      if (line.startsWith('event:')) event = line.slice(6).trim()
-      else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+  const dispatch = (eventName, rawData, eventId) => {
+    if (eventId) {
+      const parsed = Number(eventId)
+      if (!Number.isNaN(parsed)) state.lastEventId = parsed
     }
-    if (!dataLines.length) return
     let payload
     try {
-      payload = JSON.parse(dataLines.join('\n'))
+      payload = JSON.parse(rawData)
     } catch {
       return
     }
-    if (event === 'delta') onDelta?.(payload.text || '')
-    else if (event === 'final') {
-      final = payload
+    if (eventName === 'open') {
+      state.streamId = payload.streamId || null
+    } else if (eventName === 'delta') {
+      onDelta?.(payload.text || '')
+    } else if (eventName === 'final') {
+      state.final = payload
       onFinal?.(payload)
-    } else if (event === 'error') {
-      throw new ApiError(payload.message || '生成失败', 503)
+    } else if (eventName === 'error') {
+      const error = new ApiError(payload.message || '生成失败', 503)
+      error.retryable = Boolean(payload.retryable)
+      throw error
     }
   }
 
+  const consume = async (response) => {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary >= 0) {
+          const frame = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+          parseFrame(frame, dispatch)
+          boundary = buffer.indexOf('\n\n')
+        }
+      }
+      if (buffer.trim()) parseFrame(buffer, dispatch)
+    } finally {
+      reader.cancel().catch(() => {})
+    }
+  }
+
+  const send = () => {
+    const token = getToken()
+    return fetch('/api/qa/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ question }),
+    })
+  }
+
+  const run = async () => {
+    let response = await send()
+
+    // 访问令牌 30 分钟就过期,而流式请求走的是另一条代码路径 ——
+    // 这里不刷新的话,挂着页面半小时后提问会被直接踢去登录页
+    if (response.status === 401) {
+      if (!(await tryRefresh())) {
+        clearSession()
+        sessionExpiredHandler()
+        throw new ApiError('登录已失效,请重新登录', 401)
+      }
+      response = await send()
+    }
+    if (!response.ok || !response.body) {
+      throw new ApiError(`流式请求失败(${response.status})`, response.status)
+    }
+    await consume(response)
+  }
+
+  try {
+    await run()
+  } catch (e) {
+    // 网络中断(不是服务端明确报错)才值得续传:服务端说"生成失败"时,补历史也没用
+    if (e instanceof ApiError && e.status === 503) {
+      throw e
+    }
+    if (!state.streamId || state.final) {
+      throw e
+    }
+    await resume(state, dispatch)
+  }
+
+  if (!state.final) {
+    throw new ApiError('连接中断,未收到定稿', 0)
+  }
+  return state.final
+}
+
+/** 解析一个 SSE 帧:取 event / data / id 三个字段,其余忽略。 */
+function parseFrame(frame, dispatch) {
+  let eventName = 'message'
+  let eventId = null
+  const dataLines = []
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) eventName = line.slice(6).trim()
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+    else if (line.startsWith('id:')) eventId = line.slice(3).trim()
+  }
+  if (dataLines.length) {
+    dispatch(eventName, dataLines.join('\n'), eventId)
+  }
+}
+
+/** 带 lastEventId 回去补齐错过的事件;原流还在跑时服务端会发 replay-end 并关连接。 */
+async function resume(state, dispatch) {
+  const token = getToken()
+  const query = `?lastEventId=${state.lastEventId}`
+  const response = await fetch(`/api/qa/stream/${state.streamId}${query}`, {
+    headers: {
+      Accept: 'text/event-stream',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+  if (!response.ok || !response.body) {
+    throw new ApiError(`续传失败(${response.status})`, response.status)
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
   try {
     for (;;) {
       const { done, value } = await reader.read()
@@ -207,17 +292,14 @@ export async function askStream(question, { onDelta, onFinal } = {}) {
       buffer += decoder.decode(value, { stream: true })
       let boundary = buffer.indexOf('\n\n')
       while (boundary >= 0) {
-        const frame = buffer.slice(0, boundary)
+        parseFrame(buffer.slice(0, boundary), dispatch)
         buffer = buffer.slice(boundary + 2)
-        if (frame.trim()) dispatch(frame)
         boundary = buffer.indexOf('\n\n')
       }
     }
-    if (buffer.trim()) dispatch(buffer)
   } finally {
     reader.cancel().catch(() => {})
   }
-  return final
 }
 
 export const api = {

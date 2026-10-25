@@ -26,6 +26,11 @@ import static org.mockito.Mockito.when;
  * <h2>这组用例的核心</h2>
  * "轮换"本身不难写,难的是分清三种失败:过期、已吊销、以及<b>已用过的令牌再次出现</b>。
  * 第三种必须整族吊销 —— 只作废那一枚,攻击者手里还有刚换到的新令牌。
+ *
+ * <h2>这组用例覆盖不到什么(被 P0 打中过一次)</h2>
+ * mapper 是 mock 的,所以 {@code mapper.insert} 的参数绑定、SQL 与列类型这一整层<b>从未被走过</b>。
+ * 曾经有一个 UUID 类型绑定缺陷,让注册与登录 100% 返回 500,而这 8 条全绿。
+ * 那一层只能靠真库用例({@code SecurityChainTest})兜住 —— 它 skip 时,这类缺陷就是隐形的。
  */
 class RefreshTokenServiceTest {
 

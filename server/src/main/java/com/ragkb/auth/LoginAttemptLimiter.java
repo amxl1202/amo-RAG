@@ -58,7 +58,10 @@ public class LoginAttemptLimiter {
         }
         if (attempt.count() >= MAX_FAILURES) {
             long waitSeconds = WINDOW.minus(Duration.between(attempt.windowStart(), now)).toSeconds();
-            long waitMinutes = Math.max(1, (waitSeconds + 59) / 60);
+            // 向上取整到 5 分钟档:精确到分钟等于把"什么时候可以再试"告诉撞库者,
+            // 而那正是他需要的节奏参数。粗化之后仍可执行,但不再可规划
+            long rawMinutes = Math.max(1, (waitSeconds + 59) / 60);
+            long waitMinutes = ((rawMinutes + 4) / 5) * 5;
             // 不告诉调用方"这个用户名存在与否",只说尝试过密 —— 否则这里成了另一个枚举接口
             throw new ApiException(429, "登录尝试过于频繁,请 " + waitMinutes + " 分钟后再试");
         }

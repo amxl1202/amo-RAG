@@ -31,8 +31,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class QaStreamRegistry {
 
-    /** 缓冲保留时长:超过就清掉。够覆盖一次重连,又不至于长期占内存。 */
-    private static final Duration TTL = Duration.ofSeconds(30);
+    /**
+     * 缓冲保留时长。
+     *
+     * <p>两个约束同时要满足:必须 ≥ SSE 超时(180 秒),否则"生成还没结束、缓冲先过期";
+     * 又不能太长,否则内存里留着大量已完成的流。取 5 分钟,并按<b>最后一次写入</b>续期 ——
+     * 从创建时刻起算的话,一次长生成会在中途把自己的缓冲判死。
+     */
+    private static final Duration TTL = Duration.ofMinutes(5);
 
     /** 单个流最多保留多少个增量事件。 */
     private static final int MAX_EVENTS = 2000;
@@ -94,11 +100,13 @@ public class QaStreamRegistry {
     private static final class Buffer {
 
         private final List<Event> events = new ArrayList<>();
-        private final Instant createdAt = Instant.now();
+        /** 最后一次写入时刻。TTL 从这里起算,而不是创建时刻。 */
+        private volatile Instant lastWriteAt = Instant.now();
         private long nextId = 1;
         private boolean finished;
 
         synchronized Event append(String name, String data) {
+            lastWriteAt = Instant.now();
             Event event = new Event(nextId++, name, data);
             boolean isKeyEvent = "final".equals(name) || "error".equals(name);
             if (events.size() < MAX_EVENTS || isKeyEvent) {
@@ -120,7 +128,7 @@ public class QaStreamRegistry {
         }
 
         synchronized boolean isExpired(Instant deadline) {
-            return createdAt.isBefore(deadline);
+            return lastWriteAt.isBefore(deadline);
         }
     }
 }

@@ -47,7 +47,9 @@ public record QaAnswer(
         int checkPromptTokens,
         int checkCompletionTokens,
         long retrievalMillis,
-        long answerMillis) {
+        long answerMillis,
+        /** 生成用的模型名;拒答与失败路径为 null。metrics 要按模型分组时必须靠它。 */
+        String model) {
 
     public enum Status {
         /** 正常作答。 */

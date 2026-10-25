@@ -1,6 +1,6 @@
 # 接手文档（给下一个会话看）
 
-> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**231 个（库起时 0 跳过，库没起时 14 skip）**
+> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**235 个（库起时 0 跳过，库没起时 14 skip）**
 > 这份文件的目的：让任何一个新会话在 5 分钟内知道"现在在哪、下一步做什么、哪些坑别再踩"。
 > 它不替代 `PLAN.md`（那是完整计划），只做交接。
 
@@ -10,7 +10,7 @@
 
 **L1 + L2 全部打通**：浏览器登录 → 上传 → 解析 → 切片 → 向量化 → 双通道检索 → RRF →
 门控 → 提示词 → 生成 → 引用解析 → 自检 → 拒答 → 点引用看原文。
-后端 231 个测试（14 条依赖真库，库没起时 skip），前端有 6 张真实截图在 `docs/screenshots/`。
+后端 235 个测试（14 条依赖真库，库没起时 skip；推送前跑 `REQUIRE_DB=1` 强制它们真跑），前端有 6 张真实截图在 `docs/screenshots/`。
 **剩下的是 L3（可选增强）与已登记的 P2 项。**
 
 ---
@@ -76,6 +76,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 | **SSE 流式问答** | `POST /api/qa/stream`（两段式：delta 未定稿 → final 定稿）+ 断线续传 | 见 git log |
 | **双令牌** | 刷新令牌 httpOnly cookie + 轮换 + 令牌族重放吊销；access TTL 30 分钟 | 见 git log |
 | **成本画像** | `qa_records` 落每题 token/延迟/拒答原因；`GET /api/metrics/summary` 出 P50/P95 与单题成本 | 见 git log |
+| **第七批修复** | UUID TypeHandler（登录全挂的 P0）、`REQUIRE_DB` 硬开关、前端续传接通、流式 401 续期 | 见 git log |
 
 **库里现在有**：5 份文档、42 个切片、42 条 512 维向量（`text-embedding-v3`）。
 
@@ -102,7 +103,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 
 | 项 | 数值 | 含义 |
 |---|---|---|
-| 测试规模 | **231 个** | 0 失败；库没起时 14 个 skip（6 个真库用例 + 8 条安全链路） |
+| 测试规模 | **235 个** | 0 失败；库没起时 14 个 skip（6 个真库用例 + 8 条安全链路）；`REQUIRE_DB=1` 时 skip 变失败 |
 | token 倍率（embedding） | **0.776** | 本地 cl100k 对 embedding 输入高估 |
 | token 倍率（chat 提示词） | **0.666 / 0.653** | 生成输入高估约 1/3，比 embedding 更低 |
 | 检索（59 条） | HYBRID k=60：recall@5 **1.0** / MRR **0.8483**；纯向量 0.9388 / 0.7657 | 融合首次**真正**超过单通道 |
@@ -169,7 +170,15 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
     将来谁开 httpBasic 还会变成后门。
 27. **JJWT 的 `signWith(key)` 会按密钥长度自选算法**：64 字节密钥选的是 HS512，
     而注释写的是 HS256。要固定算法就显式 `signWith(key, Jwts.SIG.HS256)`。
-28. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
+28. **MyBatis 3.5.19 没有 UUID 类型处理器**：`java.util.UUID` 字段直接 `insert` 会抛
+    `IllegalStateException: Type handler was null`，注册与登录全部 500。解法：自己写
+    `UuidTypeHandler`（`setObject(..., Types.OTHER)`；`uuid` 列不接受 `setString`），
+    并用 `mybatis-plus.type-handlers-package` **全局注册**——entity 的 insert 与 `@Update` 的
+    UUID 参数走两条不同的绑定路径，字段级注解只能救前者。
+29. **mock 掉 mapper 的单测覆盖不到参数绑定**：8 条刷新令牌用例全绿，真库上注册直接 500。
+    这一层只能靠真库用例兜住，所以**推送前必须 `REQUIRE_DB=1 mvn test`** ——
+    否则"全绿"只代表"跑到的部分没问题"。
+30. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
     `@AutoConfigureMockMvc`，`TestRestTemplate` 也不在 `spring-boot-test` 里）。
     所以认证的端到端验收用 `@SpringBootTest(RANDOM_PORT)` + JDK `HttpClient` 真打端口，没有引入新依赖。
 

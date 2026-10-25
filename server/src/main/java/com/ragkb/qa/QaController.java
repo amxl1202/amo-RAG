@@ -126,6 +126,17 @@ public class QaController {
             }
             streamRegistry.finish(streamId);
             emitter.complete();
+        } catch (com.ragkb.generation.ChatException e) {
+            // ChatException 自己带 retryable 语义,不要硬编码成 true ——
+            // 前端据此决定"自动重试"还是"提示用户改问题",丢了它这个判断就没依据了
+            try {
+                send(emitter, streamId, "error",
+                        java.util.Map.of("message", "生成失败,请稍后重试", "retryable", e.retryable()));
+            } catch (Exception ignored) {
+                // 连接已断,没人收这个事件
+            }
+            streamRegistry.finish(streamId);
+            emitter.complete();
         } catch (java.io.IOException | java.io.UncheckedIOException e) {
             // 客户端已断开:静默结束,不写 error(没人收),但保留缓冲让重连能取到结果
             streamRegistry.finish(streamId);
