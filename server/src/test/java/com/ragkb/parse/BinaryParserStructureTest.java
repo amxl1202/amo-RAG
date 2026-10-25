@@ -59,10 +59,15 @@ class BinaryParserStructureTest {
                 .filter(block -> block.kind() == BlockKind.PARAGRAPH)
                 .toList();
 
-        // 每段在 PDF 里是"两行顶满 + 一行没写满",合并后应当是 3 行一段,而不是 6 行一块或 6 段
+        // 每段在 PDF 里是"两行顶满 + 一行没写满",合并后应当是 1 段,而不是 6 段
         assertThat(paragraphs).hasSize(2);
-        assertThat(paragraphs.get(0).text().lines().count()).isEqualTo(3);
-        assertThat(paragraphs.get(0).text()).startsWith("The quick brown fox");
+        // 段内换行在 P-23 之后<b>不再保留</b>:视觉行是排版结果,留着会让下游切句把一句话切成几截。
+        // 所以这里断言"整段是一行,且三行内容确实接上了" —— 旧契约(text().lines()==3)已作废
+        assertThat(paragraphs.get(0).text().lines()).hasSize(1);
+        assertThat(paragraphs.get(0).text())
+                .startsWith("The quick brown fox")
+                .doesNotContain("\n")
+                .endsWith("This short line ends the first paragraph.");
     }
 
     @Test
@@ -75,10 +80,13 @@ class BinaryParserStructureTest {
                 .toList();
 
         // 回归用例:第一版把"以。或.结尾"当成独立判据,真实中文 PDF 里段内换行
-        // 经常恰好断在句号后,结果一整段被劈成两块。现在只有"没写满"才算段落结束。
+        // 经常恰好断在句号后,结果一整段被劈成两块。现在只有"没写满"才算段落结束;
+        // 段内的视觉行在解析层就被接起来(P-23),所以整段是一行。
         assertThat(paragraphs).hasSize(1);
-        assertThat(paragraphs.get(0).text().lines()).hasSize(3);
-        assertThat(paragraphs.get(0).text().lines().toList().get(0)).endsWith(".");
+        assertThat(paragraphs.get(0).text().lines()).hasSize(1);
+        assertThat(paragraphs.get(0).text())
+                .as("第一行的句号要被保留,但不能成为段落边界")
+                .contains(".");
     }
 
     @Test

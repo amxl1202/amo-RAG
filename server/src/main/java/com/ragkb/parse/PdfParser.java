@@ -51,6 +51,16 @@ public class PdfParser implements DocumentParser {
     private static final double LEVEL_2_SCALE = 1.3;
     /** 段落末行再短也可能只是刚好换行,配一个绝对宽度兜底,避免把整页并成一段。 */
     private static final double PARAGRAPH_END_RATIO_STRICT = 0.70;
+    /**
+     * 同一行内两段文字之间超过这个比例的字号宽度,就补一个空格。
+     *
+     * <p>PDF 里"两个词之间有空隙"往往不是空格字符,而是<b>两段 showText 的坐标差</b>。
+     * 不补的话 {@code alpha} 和 {@code beta} 会被拼成 {@code alphabeta} —— 检索时
+     * "alpha beta" 这个短语永远命中不了,而且日志里看不出任何异常。
+     * 0.22 是对着 Courier 11pt 的样本定的:一个字符宽约 0.6em,半个字符(0.3em)以上才补,
+     * 取 0.22 留一点余量,避免把正常字距也当成词间距。
+     */
+    private static final double WORD_GAP_RATIO = 0.22;
 
     @Override
     public Set<String> supportedExtensions() {
@@ -93,10 +103,7 @@ public class PdfParser implements DocumentParser {
                     blocks.add(RawBlock.listItem(line.text()).onPage(page.number()));
                     continue;
                 }
-                if (!paragraph.isEmpty()) {
-                    paragraph.append('\n');
-                }
-                paragraph.append(line.text());
+                appendWrapped(paragraph, line.text());
                 if (endsParagraph(line, rightEdge)) {
                     flushParagraph(paragraph, page.number(), blocks);
                 }
@@ -104,6 +111,49 @@ public class PdfParser implements DocumentParser {
             flushParagraph(paragraph, page.number(), blocks);
         }
         return blocks;
+    }
+
+    /**
+     * 把视觉行接进段落,按语言决定要不要空格。
+     *
+     * <h2>为什么不直接用换行符</h2>
+     * PDF 的段内换行是<b>排版结果</b>,不是句子边界。下游切句若把 {@code \n} 当句末,
+     * 一句话会被切成两三截(已知缺陷 P-23)。所以这里在解析层就把视觉行接起来,
+     * 段落内部不再留换行 —— 换行只保留在块与块之间,那里才是真的边界。
+     *
+     * <h2>为什么中文不加空格</h2>
+     * 中文换行处没有空格,补进去就成了"这句 话"这种脏数据,既影响 embedding
+     * 也会让引用里出现多余空格。英文则必须补,否则 {@code thequickbrown} 会变成一个词。
+     */
+    private void appendWrapped(StringBuilder paragraph, String text) {
+        if (paragraph.isEmpty()) {
+            paragraph.append(text);
+            return;
+        }
+        paragraph.append(separatorBetween(paragraph.charAt(paragraph.length() - 1), text.charAt(0)))
+                .append(text);
+    }
+
+    /**
+     * 两个相邻片段之间该插入什么。
+     *
+     * <p>包级可见是为了能单测:中英文的规则不同,而用 PDFBox 的标准 14 字体造不出中文样本,
+     * 只能把这条判断从"必须造一份 PDF"里解放出来。
+     */
+    static String separatorBetween(char previous, char next) {
+        if (previous == ' ' || next == ' ') {
+            return "";
+        }
+        // 中文换行处没有空格;英文必须有,否则两个词会粘成一个
+        return isCjk(previous) || isCjk(next) ? "" : " ";
+    }
+
+    /** 是否是中日韩字符(这类文字换行处不需要空格)。 */
+    private static boolean isCjk(char c) {
+        return (c >= 0x4E00 && c <= 0x9FFF)      // 常用汉字
+                || (c >= 0x3400 && c <= 0x4DBF)  // 扩展 A
+                || (c >= 0x3000 && c <= 0x303F)  // 中文标点
+                || (c >= 0xFF00 && c <= 0xFFEF); // 全角字符
     }
 
     private void flushParagraph(StringBuilder paragraph, int page, List<RawBlock> blocks) {
@@ -117,6 +167,12 @@ public class PdfParser implements DocumentParser {
         String text = line.text();
         // 标题不会是一整段:超过 60 字的行即使字号大,也更可能是封面大字或页眉
         if (text.length() > 60) {
+            return 0;
+        }
+        // 列表项优先于"编号标题"判定:中文编号列表几乎都没有内部空格
+        // ("1. 首先安装JDK" 会命中 NUMBERED_HEADING),一旦当标题处理,
+        // sectionPath 就会变成"第二章 > 1. 首先安装JDK > ...",结构语义全错
+        if (LIST_ITEM.matcher(text).matches()) {
             return 0;
         }
         double scale = bodySize <= 0 ? 1d : line.fontSize() / bodySize;
@@ -178,6 +234,10 @@ public class PdfParser implements DocumentParser {
         private float lineFontSize;
         private double lineLeft = Double.MAX_VALUE;
         private double lineRight = Double.MIN_VALUE;
+        /** 上一段 showText 的最右端,用来判断"这两段之间原本有个空格"。 */
+        private double lastChunkRight = Double.MIN_VALUE;
+        /** 上一段 showText 的最后一个字符,用来判断是否中文(中文不加空格)。 */
+        private char lastChar = 0;
 
         private LineCollectingStripper() throws IOException {
             super();
@@ -199,7 +259,8 @@ public class PdfParser implements DocumentParser {
             if (text == null || text.isBlank()) {
                 return;
             }
-            lineBuffer.append(text);
+            appendWithGap(text, positions);
+            double chunkRight = Double.MIN_VALUE;
             for (TextPosition position : positions) {
                 if (position.getFontSizeInPt() > lineFontSize) {
                     lineFontSize = position.getFontSizeInPt();
@@ -212,7 +273,36 @@ public class PdfParser implements DocumentParser {
                 if (right > lineRight) {
                     lineRight = right;
                 }
+                if (right > chunkRight) {
+                    chunkRight = right;
+                }
             }
+            lastChunkRight = chunkRight;
+        }
+
+        /**
+         * 按坐标差决定要不要补空格。
+         *
+         * <p>这是 BUG-1 的修复点:PDF 里同一个视觉行经常被拆成多段 {@code showText},
+         * 段间的空隙没有对应的空格字符,于是 {@code alpha} + {@code beta} 直接拼成
+         * {@code alphabeta}。补空格的判据是"前一段的右端"到"这一段左端"的距离,
+         * 而不是字符本身 —— 字符里根本没有空格。
+         *
+         * <p>中文不补:中文换行/分段处本来就没有空格,补了就是脏数据。
+         */
+        private void appendWithGap(String text, List<TextPosition> positions) {
+            if (lineBuffer.length() > 0 && !positions.isEmpty()) {
+                double chunkLeft = positions.get(0).getXDirAdj();
+                double gap = chunkLeft - lastChunkRight;
+                char first = text.charAt(0);
+                boolean needsSpace = gap > lineFontSize * WORD_GAP_RATIO
+                        && lastChar != 0 && !isCjk(lastChar) && !isCjk(first);
+                if (needsSpace && lineBuffer.charAt(lineBuffer.length() - 1) != ' ') {
+                    lineBuffer.append(' ');
+                }
+            }
+            lineBuffer.append(text);
+            lastChar = text.charAt(text.length() - 1);
         }
 
         @Override
@@ -237,6 +327,8 @@ public class PdfParser implements DocumentParser {
 
         private void resetLine() {
             lineBuffer.setLength(0);
+            lastChunkRight = Double.MIN_VALUE;
+            lastChar = 0;
             lineFontSize = 0f;
             lineLeft = Double.MAX_VALUE;
             lineRight = Double.MIN_VALUE;
