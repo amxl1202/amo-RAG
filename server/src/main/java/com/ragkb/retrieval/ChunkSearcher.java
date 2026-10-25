@@ -17,5 +17,9 @@ import java.util.List;
 @FunctionalInterface
 public interface ChunkSearcher {
 
-    List<ScoredChunk> search(String question, int limit);
+    /**
+     * @param tenantId 租户。这个参数是必填而不是可选,是为了让"忘了过滤"变成<b>编译错误</b>:
+     *                 跨租户漏检的代价是数据泄漏,靠自觉或 code review 兜不住
+     */
+    List<ScoredChunk> search(String question, int limit, long tenantId);
 }

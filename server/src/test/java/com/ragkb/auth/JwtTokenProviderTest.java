@@ -39,7 +39,7 @@ class JwtTokenProviderTest {
     @DisplayName("签发后能解回同一个身份")
     void roundTrip() {
         JwtTokenProvider provider = provider();
-        AuthPrincipal original = new AuthPrincipal(42, "demo", "USER");
+        AuthPrincipal original = new AuthPrincipal(42, "demo", "USER", 1L);
 
         AuthPrincipal parsed = provider.parse(provider.issue(original));
 
@@ -53,7 +53,7 @@ class JwtTokenProviderTest {
     @DisplayName("令牌里不含密码,也不含任何与凭据有关的字段")
     void tokenCarriesNoSecretMaterial() {
         JwtTokenProvider provider = provider();
-        String token = provider.issue(new AuthPrincipal(7, "alice", "USER"));
+        String token = provider.issue(new AuthPrincipal(7, "alice", "USER", 1L));
 
         // JWT 的 payload 是 base64url(不是加密),直接解码就能看内容 —— 所以能放什么必须明确
         String payload = new String(java.util.Base64.getUrlDecoder()

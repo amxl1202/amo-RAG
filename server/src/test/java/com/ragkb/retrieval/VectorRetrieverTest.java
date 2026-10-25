@@ -41,7 +41,7 @@ class VectorRetrieverTest {
         }
 
         @Override
-        public List<ScoredChunk> search(float[] queryVector, int limit) {
+        public List<ScoredChunk> search(float[] queryVector, int limit, long tenantId) {
             this.lastQuery = queryVector;
             this.lastLimit = limit;
             return fixed;
@@ -97,7 +97,7 @@ class VectorRetrieverTest {
         FakeRepository repository = new FakeRepository(List.of(chunk(1, "甲", 0.9), chunk(2, "乙", 0.8)));
         VectorRetriever retriever = new VectorRetriever(new CountingEmbeddingClient(), repository);
 
-        List<ScoredChunk> result = retriever.search("问题", 7);
+        List<ScoredChunk> result = retriever.search("问题", 7, 1L);
 
         assertThat(result).hasSize(2);
         assertThat(repository.lastLimit).isEqualTo(7);
@@ -110,7 +110,7 @@ class VectorRetrieverTest {
         FakeRepository repository = new FakeRepository(List.of(chunk(9, "后出现的", 0.1), chunk(3, "先出现的", 0.95)));
         VectorRetriever retriever = new VectorRetriever(new CountingEmbeddingClient(), repository);
 
-        List<ScoredChunk> result = retriever.search("问题", 5);
+        List<ScoredChunk> result = retriever.search("问题", 5, 1L);
 
         assertThat(result).extracting(ScoredChunk::chunkId).containsExactly(9L, 3L);
     }
@@ -121,7 +121,7 @@ class VectorRetrieverTest {
         CountingEmbeddingClient client = new CountingEmbeddingClient();
         VectorRetriever retriever = new VectorRetriever(client, new FakeRepository(List.of()));
 
-        assertThat(retriever.search("问题", 0)).isEmpty();
+        assertThat(retriever.search("问题", 0, 1L)).isEmpty();
         assertThat(client.queryCalls).as("不该调用向量化接口").isZero();
     }
 
@@ -130,7 +130,7 @@ class VectorRetrieverTest {
     void blankQuestionIsRejected() {
         VectorRetriever retriever = new VectorRetriever(new CountingEmbeddingClient(), new FakeRepository(List.of()));
 
-        assertThatThrownBy(() -> retriever.search("   ", 5))
+        assertThatThrownBy(() -> retriever.search("   ", 5, 1L))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -140,7 +140,7 @@ class VectorRetrieverTest {
         FakeRepository repository = new FakeRepository(List.of(chunk(1, "第一段", 0.9), chunk(2, "第二段", 0.8)));
         VectorRetriever retriever = new VectorRetriever(new CountingEmbeddingClient(), repository);
 
-        List<String> contents = retriever.searchContents("问题", 5);
+        List<String> contents = retriever.searchContents("问题", 5, 1L);
 
         assertThat(contents).containsExactly("第一段", "第二段");
     }
@@ -160,7 +160,7 @@ class VectorRetrieverTest {
             }
 
             @Override
-            public List<ScoredChunk> search(float[] queryVector, int limit) {
+            public List<ScoredChunk> search(float[] queryVector, int limit, long tenantId) {
                 throw new IllegalStateException("dimension mismatch");
             }
 
@@ -171,7 +171,7 @@ class VectorRetrieverTest {
         };
         VectorRetriever retriever = new VectorRetriever(new CountingEmbeddingClient(), broken);
 
-        assertThatThrownBy(() -> retriever.search("问题", 5))
+        assertThatThrownBy(() -> retriever.search("问题", 5, 1L))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("dimension");
     }
@@ -182,7 +182,7 @@ class VectorRetrieverTest {
         VectorRetriever retriever = new VectorRetriever(new CountingEmbeddingClient(),
                 new FakeRepository(new ArrayList<>()));
 
-        assertThat(retriever.search("问题", 5)).isEmpty();
+        assertThat(retriever.search("问题", 5, 1L)).isEmpty();
     }
 
     @Test
@@ -192,7 +192,7 @@ class VectorRetrieverTest {
         VectorRetriever retriever = new VectorRetriever(client,
                 new FakeRepository(List.of(chunk(1, "甲", 0.9))));
 
-        retriever.search("问题", 5);
+        retriever.search("问题", 5, 1L);
 
         assertThat(client.queryCalls).isEqualTo(1);
         assertThat(client.documentCalls)

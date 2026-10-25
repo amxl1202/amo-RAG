@@ -50,7 +50,13 @@ public class DocumentService {
     @Value("${app.upload.max-size-mb:50}")
     private int maxSizeMb;
 
-    public DocumentEntity upload(MultipartFile file) {
+    /**
+     * 上传。
+     *
+     * @param tenantId 所属租户。去重也必须在租户内做:<b>全局去重会泄漏"别人有这份文件"</b>
+     *                 (B 传同名文件收到 409,等于确认了 A 的存在),同时会挡住 B 的正常上传。
+     */
+    public DocumentEntity upload(MultipartFile file, long tenantId) {
         if (file == null || file.isEmpty()) {
             throw ApiException.badRequest("上传内容为空");
         }
@@ -77,7 +83,7 @@ public class DocumentService {
             }
             String sha256 = HexFormat.of().formatHex(digest.digest());
 
-            DocumentEntity existing = findBySha256(sha256);
+            DocumentEntity existing = findBySha256(sha256, tenantId);
             if (existing != null) {
                 throw ApiException.conflict("文件已存在(文档 id=" + existing.getId() + ")");
             }
@@ -94,6 +100,7 @@ public class DocumentService {
             entity.setContentType(file.getContentType());
             entity.setStoragePath(stored.storagePath());
             entity.setStatus("UPLOADED");
+            entity.setTenantId(tenantId);
             entity.setCreatedAt(LocalDateTime.now());
             entity.setUpdatedAt(LocalDateTime.now());
             try {
@@ -127,17 +134,33 @@ public class DocumentService {
         }
     }
 
-    public DocumentEntity getById(Long id) {
-        DocumentEntity entity = documentMapper.selectById(id);
+    /**
+     * 按 id 取文档,且必须属于该租户。
+     *
+     * <p>跨租户访问返回 <b>404 而不是 403</b>:403 等于告诉对方"这个 id 是存在的",
+     * 那本身就是一条信息。对外一律表现为"没有这个东西"。
+     */
+    public DocumentEntity getById(Long id, long tenantId) {
+        DocumentEntity entity = documentMapper.selectOne(new LambdaQueryWrapper<DocumentEntity>()
+                .eq(DocumentEntity::getId, id)
+                .eq(DocumentEntity::getTenantId, tenantId));
         if (entity == null) {
             throw ApiException.notFound("文档不存在: id=" + id);
         }
         return entity;
     }
 
-    private DocumentEntity findBySha256(String sha256) {
+    /** 列表也只返回本租户的文档。 */
+    public java.util.List<DocumentEntity> list(long tenantId) {
+        return documentMapper.selectList(new LambdaQueryWrapper<DocumentEntity>()
+                .eq(DocumentEntity::getTenantId, tenantId)
+                .orderByDesc(DocumentEntity::getCreatedAt));
+    }
+
+    private DocumentEntity findBySha256(String sha256, long tenantId) {
         return documentMapper.selectOne(new LambdaQueryWrapper<DocumentEntity>()
-                .eq(DocumentEntity::getSha256, sha256));
+                .eq(DocumentEntity::getSha256, sha256)
+                .eq(DocumentEntity::getTenantId, tenantId));
     }
 
     private String extractExtension(String filename) {

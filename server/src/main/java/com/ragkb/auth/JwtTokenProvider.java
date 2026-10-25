@@ -79,6 +79,7 @@ public class JwtTokenProvider {
                 .subject(String.valueOf(principal.userId()))
                 .claim("username", principal.username())
                 .claim("role", principal.role())
+                .claim("tenant", principal.tenantId())
                 .issuer(issuer)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(ttl)))
@@ -110,7 +111,13 @@ public class JwtTokenProvider {
             long userId = Long.parseLong(claims.getSubject());
             String username = claims.get("username", String.class);
             String role = claims.get("role", String.class);
-            return new AuthPrincipal(userId, username, role);
+            // 老令牌没有 tenant 声明:按默认租户处理会让"旧令牌能看新租户数据"成为可能,
+            // 所以这里缺了就判无效,强制重新登录一次
+            Long tenant = claims.get("tenant", Long.class);
+            if (tenant == null) {
+                return null;
+            }
+            return new AuthPrincipal(userId, username, role, tenant);
         } catch (JwtException | IllegalArgumentException e) {
             // 过期、签名错、结构错都在这里;不记完整令牌,避免把凭据写进日志
             return null;

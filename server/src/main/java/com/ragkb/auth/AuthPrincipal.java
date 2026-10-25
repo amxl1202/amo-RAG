@@ -10,8 +10,10 @@ package com.ragkb.auth;
  * @param userId   用户主键
  * @param username 登录名
  * @param role     角色,当前只有 USER
+ * @param tenantId 所属租户。放进令牌是为了让每个请求都能拿到,
+ *                 而不必为了一次归属判断再查一次库
  */
-public record AuthPrincipal(long userId, String username, String role) {
+public record AuthPrincipal(long userId, String username, String role, long tenantId) {
 
     public AuthPrincipal {
         if (userId <= 0) {
@@ -21,5 +23,8 @@ public record AuthPrincipal(long userId, String username, String role) {
             throw new IllegalArgumentException("username 不能为空");
         }
         role = role == null || role.isBlank() ? "USER" : role;
+        if (tenantId <= 0) {
+            throw new IllegalArgumentException("tenantId 必须为正: " + tenantId);
+        }
     }
 }

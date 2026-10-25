@@ -42,7 +42,9 @@ public class JdbcVectorStoreRepository implements VectorStoreRepository {
                    1 - (e.embedding <=> ?::vector) AS score
             FROM chunk_embeddings e
             JOIN document_chunks c ON c.id = e.chunk_id
+            JOIN documents d ON d.id = c.document_id
             WHERE e.model = ?
+              AND d.tenant_id = ?
             ORDER BY e.embedding <=> ?::vector
             LIMIT ?
             """;
@@ -87,7 +89,7 @@ public class JdbcVectorStoreRepository implements VectorStoreRepository {
     }
 
     @Override
-    public List<ScoredChunk> search(float[] queryVector, int limit) {
+    public List<ScoredChunk> search(float[] queryVector, int limit, long tenantId) {
         if (queryVector == null || queryVector.length == 0 || limit <= 0) {
             return List.of();
         }

@@ -75,7 +75,7 @@ class JdbcVectorStoreRepositoryTest {
                     new ChunkVector(third, "text-embedding-v3", mixed())));
             assertThat(saved).isEqualTo(3);
 
-            List<ScoredChunk> hits = repository.search(unit(0), 3);
+            List<ScoredChunk> hits = repository.search(unit(0), 3, 1L);
 
             assertThat(hits).hasSize(3);
             assertThat(hits.get(0).chunkId())
@@ -117,8 +117,8 @@ class JdbcVectorStoreRepositoryTest {
             assertThat(rows).as("主键冲突应覆盖而不是新增一行").isEqualTo(1);
 
             // 换模型期间旧行还在,但检索必须只看当前模型 —— 否则余弦相似度跨模型比较会让排序失真
-            assertThat(repoA.search(unit(0), 5)).as("model-a 已无数据,应查不到").isEmpty();
-            assertThat(repoB.search(unit(2), 1).get(0).chunkId()).isEqualTo(chunkId);
+            assertThat(repoA.search(unit(0), 5, 1L)).as("model-a 已无数据,应查不到").isEmpty();
+            assertThat(repoB.search(unit(2), 1, 1L).get(0).chunkId()).isEqualTo(chunkId);
             assertThat(repoA.count()).isZero();
             assertThat(repoB.count()).isEqualTo(1);
 
@@ -142,8 +142,8 @@ class JdbcVectorStoreRepositoryTest {
         }
         JdbcVectorStoreRepository repository = new JdbcVectorStoreRepository(jdbc, "text-embedding-v3");
 
-        assertThat(repository.search(unit(0), 0)).isEmpty();
-        assertThat(repository.search(new float[0], 5)).isEmpty();
+        assertThat(repository.search(unit(0), 0, 1L)).isEmpty();
+        assertThat(repository.search(new float[0], 5, 1L)).isEmpty();
     }
 
     private static long insertDocument(JdbcTemplate jdbc) {

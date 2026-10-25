@@ -71,8 +71,8 @@ public class QaService {
      * @param question 问题原文
      * @return 答案与全部中间量;模型故障时返回 {@link QaAnswer.Status#FAILED},不抛异常
      */
-    public QaAnswer ask(String question) {
-        return ask(question, delta -> {
+    public QaAnswer ask(String question, long tenantId) {
+        return ask(question, tenantId, delta -> {
         });
     }
 
@@ -86,12 +86,12 @@ public class QaService {
      *
      * @param onDelta 增量回调,按模型产出顺序调用
      */
-    public QaAnswer ask(String question, java.util.function.Consumer<String> onDelta) {
+    public QaAnswer ask(String question, long tenantId, java.util.function.Consumer<String> onDelta) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("问题不能为空");
         }
         long retrievalStarted = System.nanoTime();
-        HybridRetriever.HybridResult hits = retriever.search(question, channelLimit);
+        HybridRetriever.HybridResult hits = retriever.search(question, channelLimit, tenantId);
         long retrievalMillis = (System.nanoTime() - retrievalStarted) / 1_000_000;
 
         EvidenceEvaluator.RetrievalSignals signals = new EvidenceEvaluator.RetrievalSignals(
@@ -114,7 +114,7 @@ public class QaService {
                 .stream().map(RrfFuser.Hit::chunk).toList();
         List<Evidence> evidences = new ArrayList<>(fused.size());
         for (ScoredChunk chunk : fused) {
-            evidences.add(Evidence.from(chunk, titles.titleOf(chunk.documentId())));
+            evidences.add(Evidence.from(chunk, titles.titleOf(chunk.documentId(), tenantId)));
         }
         Prompt prompt = promptBuilder.build(question, evidences);
 

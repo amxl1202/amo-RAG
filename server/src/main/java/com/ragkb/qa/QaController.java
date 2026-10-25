@@ -1,5 +1,6 @@
 package com.ragkb.qa;
 
+import com.ragkb.auth.AuthPrincipal;
 import com.ragkb.common.ApiException;
 import com.ragkb.common.ApiResponse;
 import jakarta.validation.Valid;
@@ -66,14 +67,17 @@ public class QaController {
      * "被删掉的句子"留在屏幕上 —— 两段式是唯一同时满足体感与可溯源的折中。
      */
     @PostMapping("/stream")
-    public SseEmitter stream(@Valid @RequestBody QaRequest request) {
+    public SseEmitter stream(@Valid @RequestBody QaRequest request,
+                             @org.springframework.security.core.annotation.AuthenticationPrincipal
+                             AuthPrincipal principal) {
+        long tenantId = principal.tenantId();
         String streamId = streamRegistry.open();
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MILLIS);
         // 无论是正常完成、超时还是客户端断开,都标记结束:缓冲保留到 TTL,允许重连取结果
         emitter.onCompletion(() -> streamRegistry.finish(streamId));
         emitter.onTimeout(() -> streamRegistry.finish(streamId));
         emitter.onError(error -> streamRegistry.finish(streamId));
-        streamExecutor.submit(() -> runStream(streamId, request.question(), emitter));
+        streamExecutor.submit(() -> runStream(streamId, request.question(), tenantId, emitter));
         return emitter;
     }
 
@@ -106,10 +110,10 @@ public class QaController {
     }
 
     /** 真正跑一次问答并推送事件。全程单线程写 emitter,不需要额外同步。 */
-    private void runStream(String streamId, String question, SseEmitter emitter) {
+    private void runStream(String streamId, String question, long tenantId, SseEmitter emitter) {
         try {
             send(emitter, streamId, "open", java.util.Map.of("streamId", streamId));
-            QaAnswer answer = qaService.ask(question, delta -> {
+            QaAnswer answer = qaService.ask(question, tenantId, delta -> {
                 try {
                     send(emitter, streamId, "delta", java.util.Map.of("text", delta));
                 } catch (java.io.IOException e) {
@@ -176,8 +180,11 @@ public class QaController {
     }
 
     @PostMapping
-    public ApiResponse<QaResponse> ask(@Valid @RequestBody QaRequest request) {
-        QaAnswer answer = qaService.ask(request.question());
+    public ApiResponse<QaResponse> ask(@Valid @RequestBody QaRequest request,
+                                       @org.springframework.security.core.annotation.AuthenticationPrincipal
+                                       AuthPrincipal principal) {
+        long tenantId = principal.tenantId();
+        QaAnswer answer = qaService.ask(request.question(), tenantId);
         // 埋点放在这里而不是 QaService 里:评估跑批直接调 service,不该把 59 条固定用例
         // 混进线上流量,否则"线上拒答率"和"评估拒答率"再也分不开
         recordService.recordAsync(request.question(), answer);

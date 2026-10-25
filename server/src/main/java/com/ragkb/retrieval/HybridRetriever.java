@@ -76,7 +76,7 @@ public class HybridRetriever {
      * @param question        问题原文
      * @param limitPerChannel 每路各取多少条(融合前不宜太少,否则 RRF 没有名次可用)
      */
-    public HybridResult search(String question, int limitPerChannel) {
+    public HybridResult search(String question, int limitPerChannel, long tenantId) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("检索问题不能为空");
         }
@@ -85,12 +85,12 @@ public class HybridRetriever {
         }
 
         var vectorFuture = java.util.concurrent.CompletableFuture
-                .supplyAsync(() -> new Outcome(vectorRetriever.search(question, limitPerChannel), false), executor)
+                .supplyAsync(() -> new Outcome(vectorRetriever.search(question, limitPerChannel, tenantId), false), executor)
                 .orTimeout(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
                 .exceptionally(error -> new Outcome(List.of(), true));
 
         var keywordFuture = java.util.concurrent.CompletableFuture
-                .supplyAsync(() -> new Outcome(keywordRetriever.search(question, limitPerChannel), false), executor)
+                .supplyAsync(() -> new Outcome(keywordRetriever.search(question, limitPerChannel, tenantId), false), executor)
                 .orTimeout(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
                 .exceptionally(error -> new Outcome(List.of(), true));
 

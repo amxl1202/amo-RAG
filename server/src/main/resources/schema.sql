@@ -141,3 +141,17 @@ CREATE TABLE IF NOT EXISTS qa_records (
 
 -- 汇总查询都按时间倒序过滤,单列索引足够
 CREATE INDEX IF NOT EXISTS idx_qa_records_created ON qa_records (created_at DESC);
+
+-- ============ 租户隔离 ============
+-- 用 ALTER 而不是改 CREATE:库已经在跑,幂等增量比"重建表"安全
+-- 默认 1 让存量数据有归属,而不是留在 NULL 里(那会让所有隔离查询出现第三种状态)
+ALTER TABLE users     ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1;
+
+-- 去重键必须跟着租户走:原来的全局唯一会让"B 传了一份 A 已上传的文件"直接 409,
+-- 这既挡住正常使用,又泄漏了"A 有这份文件"这个事实
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS uk_documents_sha256;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_documents_tenant_sha256 ON documents (tenant_id, sha256);
+
+-- 检索按 tenant 过滤,列表按 tenant + 时间排序,都吃这个索引
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_created ON documents (tenant_id, created_at DESC);

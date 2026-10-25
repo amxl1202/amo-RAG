@@ -11,5 +11,5 @@ package com.ragkb.qa;
 public interface DocumentTitles {
 
     /** 查不到时返回占位串,不要返回 null —— null 会让提示词里出现 "null" 字样。 */
-    String titleOf(long documentId);
+    String titleOf(long documentId, long tenantId);
 }

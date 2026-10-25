@@ -41,6 +41,12 @@ import java.util.function.BiFunction;
  */
 public final class RetrievalComparison {
 
+    /**
+     * 评估跑批固定用租户 1:语料与用例都属于它。
+     * 不跟随登录用户 —— 评估不是"某个人的会话",而是一次离线回归。
+     */
+    private static final long EVAL_TENANT = 1L;
+
     private static final Path DEFAULT_CASES = Path.of("samples", "eval", "cases.json");
     private static final Path DOT_ENV = Path.of(".env");
 
@@ -65,14 +71,14 @@ public final class RetrievalComparison {
         boolean vectorReady = embeddingClient != null && vector.available();
 
         List<Config> configs = new ArrayList<>();
-        configs.add(new Config("ILIKE", (q, limit) -> contents(ilike.search(q, limit))));
-        configs.add(new Config("TRGM", (q, limit) -> contents(trgm.search(q, limit))));
+        configs.add(new Config("ILIKE", (q, limit) -> contents(ilike.search(q, limit, EVAL_TENANT))));
+        configs.add(new Config("TRGM", (q, limit) -> contents(trgm.search(q, limit, EVAL_TENANT))));
         if (vectorReady) {
-            configs.add(new Config("VECTOR", (q, limit) -> contents(vector.search(q, limit))));
+            configs.add(new Config("VECTOR", (q, limit) -> contents(vector.search(q, limit, EVAL_TENANT))));
             for (int k : new int[]{0, 20, 60}) {
                 configs.add(new Config("HYBRID k=" + k, (q, limit) -> {
-                    List<ScoredChunk> left = vector.search(q, limit * 2);
-                    List<ScoredChunk> right = trgm.search(q, limit * 2);
+                    List<ScoredChunk> left = vector.search(q, limit * 2, EVAL_TENANT);
+                    List<ScoredChunk> right = trgm.search(q, limit * 2, EVAL_TENANT);
                     return fuser.fuse(left, right, k, limit).stream()
                             .map(hit -> hit.chunk().content())
                             .toList();
@@ -116,9 +122,9 @@ public final class RetrievalComparison {
             return repository != null && repository.count() > 0;
         }
 
-        private List<ScoredChunk> search(String question, int limit) {
+        private List<ScoredChunk> search(String question, int limit, long tenantId) {
             float[] vector = cache.computeIfAbsent(question, client::embedQuery);
-            return repository.search(vector, limit);
+            return repository.search(vector, limit, tenantId);
         }
     }
 

@@ -71,7 +71,7 @@ class JdbcKeywordRetrieverTest {
             insertChunk(jdbc, documentId, 1, "这一节与主题无关,只讲向量索引。");
 
             JdbcKeywordRetriever retriever = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.ILIKE);
-            List<ScoredChunk> hits = retriever.search("审计", 10);
+            List<ScoredChunk> hits = retriever.search("审计", 10, 1L);
 
             assertThat(hits).isNotEmpty();
             assertThat(hits.get(0).content()).contains("审计");
@@ -103,8 +103,8 @@ class JdbcKeywordRetrieverTest {
             var ilike = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.ILIKE);
             var trgm = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.TRGM);
 
-            List<ScoredChunk> ilikeHits = ilike.search("合规审计", 10);
-            List<ScoredChunk> trgmHits = trgm.search("合规审计", 10);
+            List<ScoredChunk> ilikeHits = ilike.search("合规审计", 10, 1L);
+            List<ScoredChunk> trgmHits = trgm.search("合规审计", 10, 1L);
 
             assertThat(ilikeHits).isNotEmpty();
             assertThat(trgmHits.size()).as("模糊模式不应少于精确子串模式").isGreaterThanOrEqualTo(ilikeHits.size());
@@ -127,8 +127,8 @@ class JdbcKeywordRetrieverTest {
         }
         JdbcKeywordRetriever retriever = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.ILIKE);
 
-        assertThat(retriever.search("   ", 5)).isEmpty();
-        assertThat(retriever.search("审计", 0)).isEmpty();
+        assertThat(retriever.search("   ", 5, 1L)).isEmpty();
+        assertThat(retriever.search("审计", 0, 1L)).isEmpty();
     }
 
     private static void cleanup(JdbcTemplate jdbc, long documentId) {

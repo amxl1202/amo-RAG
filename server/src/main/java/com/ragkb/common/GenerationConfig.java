@@ -62,10 +62,14 @@ public class GenerationConfig {
      */
     @Bean
     public DocumentTitles documentTitles(DocumentMapper documentMapper) {
-        Map<Long, String> cache = new ConcurrentHashMap<>();
-        return documentId -> cache.computeIfAbsent(documentId, id -> {
-            DocumentEntity entity = documentMapper.selectById(id);
-            return entity == null ? "文档#" + id : entity.getOriginalName();
+        Map<String, String> cache = new ConcurrentHashMap<>();
+        return (documentId, tenantId) -> cache.computeIfAbsent(tenantId + ":" + documentId, key -> {
+            DocumentEntity entity = documentMapper.selectById(documentId);
+            // 归属不符时不要泄漏标题 —— 直接给一个中性的占位
+            if (entity == null || entity.getTenantId() == null || entity.getTenantId() != tenantId) {
+                return "文档#" + documentId;
+            }
+            return entity.getOriginalName();
         });
     }
 

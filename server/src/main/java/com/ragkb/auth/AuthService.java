@@ -127,7 +127,8 @@ public class AuthService {
     }
 
     private Session issueSession(UserEntity entity) {
-        AuthPrincipal principal = new AuthPrincipal(entity.getId(), entity.getUsername(), entity.getRole());
+        AuthPrincipal principal = new AuthPrincipal(entity.getId(), entity.getUsername(), entity.getRole(),
+                entity.getTenantId() == null ? 1L : entity.getTenantId());
         AuthResponse access = AuthResponse.of(tokenProvider.issue(principal), tokenProvider.ttlSeconds(), principal);
         // 每次登录开一个新族:同一账号在不同设备上的会话互不影响,
         // 一台设备检测到重放时不会把另一台的登录也踢掉
@@ -146,7 +147,8 @@ public class AuthService {
         if (entity == null) {
             throw new ApiException(401, "用户不存在,请重新登录");
         }
-        AuthPrincipal principal = new AuthPrincipal(entity.getId(), entity.getUsername(), entity.getRole());
+        AuthPrincipal principal = new AuthPrincipal(entity.getId(), entity.getUsername(), entity.getRole(),
+                entity.getTenantId() == null ? 1L : entity.getTenantId());
         AuthResponse access = AuthResponse.of(tokenProvider.issue(principal), tokenProvider.ttlSeconds(), principal);
         return new Session(access, rotated.raw());
     }

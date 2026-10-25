@@ -27,7 +27,7 @@ public class VectorRetriever implements ChunkSearcher {
      * @param limit    最多返回多少条;小于等于 0 直接返回空列表,不去调接口浪费一次调用
      */
     @Override
-    public List<ScoredChunk> search(String question, int limit) {
+    public List<ScoredChunk> search(String question, int limit, long tenantId) {
         if (question == null || question.isBlank()) {
             throw new IllegalArgumentException("检索问题不能为空");
         }
@@ -36,14 +36,14 @@ public class VectorRetriever implements ChunkSearcher {
         }
         // 查询侧必须是 embedQuery:与入库用的 document 侧不是同一个分布
         float[] queryVector = embeddingClient.embedQuery(question);
-        return repository.search(queryVector, limit);
+        return repository.search(queryVector, limit, tenantId);
     }
 
     /**
      * 只要片段正文的版本,方便直接接到评估跑批
      * ({@code EvalRunner.Retriever} 需要的正是"问题 → 正文列表")。
      */
-    public List<String> searchContents(String question, int limit) {
-        return search(question, limit).stream().map(ScoredChunk::content).toList();
+    public List<String> searchContents(String question, int limit, long tenantId) {
+        return search(question, limit, tenantId).stream().map(ScoredChunk::content).toList();
     }
 }

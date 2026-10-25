@@ -30,5 +30,8 @@ public class UserEntity {
     /** USER / ADMIN。当前只有 USER,留着是为了加管理员时不用改表。 */
     private String role;
 
+    /** 所属租户。当前单租户演示,但所有读写路径都已按它过滤,加租户不需要改链路。 */
+    private Long tenantId;
+
     private LocalDateTime createdAt;
 }

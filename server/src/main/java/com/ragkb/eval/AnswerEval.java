@@ -61,6 +61,12 @@ import java.util.Map;
  */
 public final class AnswerEval {
 
+    /**
+     * 评估跑批固定用租户 1:语料与用例都属于它。
+     * 不跟随登录用户 —— 评估不是"某个人的会话",而是一次离线回归。
+     */
+    private static final long EVAL_TENANT = 1L;
+
     private static final Path DEFAULT_CASES = Path.of("samples", "eval", "cases.json");
     private static final Path DOT_ENV = Path.of(".env");
 
@@ -123,7 +129,7 @@ public final class AnswerEval {
 
         List<CaseResult> results = new ArrayList<>();
         for (EvalCase evalCase : dataset.cases()) {
-            QaAnswer answer = service.ask(evalCase.question());
+            QaAnswer answer = service.ask(evalCase.question(), EVAL_TENANT);
             double top1 = answer.gate().vectorTop1();
             double coverage = answer.gate().keywordCoverage();
             int total = answer.citations().size();
@@ -296,7 +302,8 @@ public final class AnswerEval {
                 rs -> {
                     cache.put(rs.getLong("id"), rs.getString("original_name"));
                 });
-        return documentId -> cache.getOrDefault(documentId, "文档#" + documentId);
+        // 评估只跑租户 1,所以这里不需要再判归属;接口签名保留 tenant 是为了与线上同源
+        return (documentId, tenantId) -> cache.getOrDefault(documentId, "文档#" + documentId);
     }
 
     private static ChatProperties chatProperties(Map<String, String> env, String apiKey) {

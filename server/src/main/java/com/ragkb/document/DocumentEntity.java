@@ -34,6 +34,9 @@ public class DocumentEntity {
     /** UPLOADED / PARSING / CHUNKED / EMBEDDING / READY / FAILED */
     private String status;
 
+    /** 所属租户。检索与详情都必须按它过滤,否则跨租户读到别人的文档。 */
+    private Long tenantId;
+
     private String failReason;
 
     private LocalDateTime createdAt;

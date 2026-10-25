@@ -72,14 +72,18 @@ public class JdbcKeywordRetriever implements KeywordRetriever {
 
     private static final String ILIKE_SQL = SELECT_COLUMNS + SCORE_EXPR + """
             FROM document_chunks c
+            JOIN documents d ON d.id = c.document_id
             WHERE c.content ~* ?
+              AND d.tenant_id = ?
             ORDER BY score DESC, c.id
             LIMIT ?
             """;
 
     private static final String TRGM_SQL = SELECT_COLUMNS + SCORE_EXPR + """
             FROM document_chunks c
-            WHERE c.content ~* ? OR c.content % ?
+            JOIN documents d ON d.id = c.document_id
+            WHERE (c.content ~* ? OR c.content % ?)
+              AND d.tenant_id = ?
             ORDER BY score DESC, c.id
             LIMIT ?
             """;
@@ -97,7 +101,7 @@ public class JdbcKeywordRetriever implements KeywordRetriever {
     }
 
     @Override
-    public List<ScoredChunk> search(String query, int limit) {
+    public List<ScoredChunk> search(String query, int limit, long tenantId) {
         if (query == null || query.isBlank() || limit <= 0) {
             return List.of();
         }

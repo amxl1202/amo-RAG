@@ -33,7 +33,7 @@ public interface VectorStoreRepository {
      * @param queryVector 查询向量
      * @param limit       最多返回多少条;小于等于 0 时返回空列表而不是抛异常 —— 调用方传 0 的意图通常是"不要结果"
      */
-    List<ScoredChunk> search(float[] queryVector, int limit);
+    List<ScoredChunk> search(float[] queryVector, int limit, long tenantId);
 
     /** 已入库的向量条数(仅本模型),用于确认"全量刷完没有"。 */
     long count();

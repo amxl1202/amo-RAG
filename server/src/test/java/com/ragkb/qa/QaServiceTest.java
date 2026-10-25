@@ -62,7 +62,12 @@ class QaServiceTest {
                 new PromptBuilder(counter),
                 new AnswerGenerator(model),
                 new EvidenceEvaluator(new EvidenceEvaluator.Thresholds(0.45, 0.5)),
-                model, documentId -> "笔记.md", 20);
+                model, (documentId, tenantId) -> "笔记.md", 20);
+    }
+
+    /** 单租户用例:租户号固定为 1,隔离相关的用例在 TenantIsolationTest 里单独写。 */
+    private static QaAnswer ask(QaService service, String question) {
+        return service.ask(question, 1L);
     }
 
     @Test
@@ -70,11 +75,11 @@ class QaServiceTest {
     void answeredPath() {
         ScriptedModel model = new ScriptedModel("结论是这样的[E1]。", "{\"unsupported\":[]}");
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 0.72)),
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 4.0)),
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 0.72)),
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 4.0)),
                 model);
 
-        QaAnswer answer = service.ask("材料里说了什么?");
+        QaAnswer answer = ask(service, "材料里说了什么?");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.ANSWERED);
         assertThat(answer.text()).contains("[E1]");
@@ -88,9 +93,9 @@ class QaServiceTest {
     @DisplayName("两路全空:一次模型调用都不发生")
     void emptyHitsSkipModelEntirely() {
         ScriptedModel model = new ScriptedModel();
-        QaService service = service((q, limit) -> List.of(), (q, limit) -> List.of(), model);
+        QaService service = service((q, limit, tenantId) -> List.of(), (q, limit, tenantId) -> List.of(), model);
 
-        QaAnswer answer = service.ask("文档里没有的问题");
+        QaAnswer answer = ask(service, "文档里没有的问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.REFUSED);
         assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.NO_HITS);
@@ -102,11 +107,11 @@ class QaServiceTest {
     void weakEvidenceSkipsGeneration() {
         ScriptedModel model = new ScriptedModel();
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "无关内容。", 0.20)),
-                (q, limit) -> List.of(chunk(1, "无关内容。", 1.0)),
+                (q, limit, tenantId) -> List.of(chunk(1, "无关内容。", 0.20)),
+                (q, limit, tenantId) -> List.of(chunk(1, "无关内容。", 1.0)),
                 model);
 
-        QaAnswer answer = service.ask("完全不相干的问题");
+        QaAnswer answer = ask(service, "完全不相干的问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.REFUSED);
         assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.WEAK_EVIDENCE);
@@ -118,11 +123,11 @@ class QaServiceTest {
     void modelRefusalSkipsSelfCheck() {
         ScriptedModel model = new ScriptedModel("材料中未提及。");
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 0.72)),
-                (q, limit) -> List.of(),
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 0.72)),
+                (q, limit, tenantId) -> List.of(),
                 model);
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.REFUSED);
         assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.MODEL_INSUFFICIENT);
@@ -135,11 +140,11 @@ class QaServiceTest {
     void unsupportedEverythingRefuses() {
         ScriptedModel model = new ScriptedModel("编的结论[E1]。", "{\"unsupported\":[1]}");
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 0.72)),
-                (q, limit) -> List.of(),
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 0.72)),
+                (q, limit, tenantId) -> List.of(),
                 model);
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.REFUSED);
         assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.UNSUPPORTED);
@@ -153,11 +158,11 @@ class QaServiceTest {
             throw new ChatException("上游 503", true);
         };
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 0.72)),
-                (q, limit) -> List.of(),
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 0.72)),
+                (q, limit, tenantId) -> List.of(),
                 failing);
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.FAILED);
         assertThat(answer.text()).isEmpty();
@@ -168,13 +173,13 @@ class QaServiceTest {
     void degradedChannelIsReported() {
         ScriptedModel model = new ScriptedModel("结论[E1]。", "{\"unsupported\":[]}");
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 0.72)),
-                (q, limit) -> {
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 0.72)),
+                (q, limit, tenantId) -> {
                     throw new IllegalStateException("关键词通道挂了");
                 },
                 model);
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.ANSWERED);
         assertThat(answer.degraded()).isTrue();
@@ -185,11 +190,11 @@ class QaServiceTest {
     void unknownLabelsAreSurfaced() {
         ScriptedModel model = new ScriptedModel("真话[E1]。假话[E9]。", "{\"unsupported\":[]}");
         QaService service = service(
-                (q, limit) -> List.of(chunk(1, "材料正文甲。", 0.72)),
-                (q, limit) -> List.of(),
+                (q, limit, tenantId) -> List.of(chunk(1, "材料正文甲。", 0.72)),
+                (q, limit, tenantId) -> List.of(),
                 model);
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.unknownLabels()).containsExactly("E9");
         assertThat(answer.text()).doesNotContain("E9").contains("[E1]");
@@ -199,15 +204,15 @@ class QaServiceTest {
     @DisplayName("两路同时故障:状态是 FAILED —— 不能伪装成'材料中未提及'")
     void bothChannelsDownIsFailureNotRefusal() {
         QaService service = service(
-                (q, limit) -> {
+                (q, limit, tenantId) -> {
                     throw new IllegalStateException("向量通道挂了");
                 },
-                (q, limit) -> {
+                (q, limit, tenantId) -> {
                     throw new IllegalStateException("关键词通道也挂了");
                 },
                 new ScriptedModel());
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.FAILED);
         assertThat(answer.reason()).isEqualTo(EvidenceEvaluator.Reason.CHANNELS_DOWN);
@@ -222,11 +227,11 @@ class QaServiceTest {
                 chunk(1, "材料正文甲。", 0.72),
                 chunk(2, "材料正文乙。", 0.71));
         QaService service = service(
-                (q, limit) -> hits,
-                (q, limit) -> hits,
+                (q, limit, tenantId) -> hits,
+                (q, limit, tenantId) -> hits,
                 model);
 
-        QaAnswer answer = service.ask("问题");
+        QaAnswer answer = ask(service, "问题");
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.ANSWERED);
         assertThat(answer.text()).doesNotContain("[E1]").contains("[E2]");
@@ -241,12 +246,12 @@ class QaServiceTest {
         ScriptedModel model = new ScriptedModel("第一句[E1]。", "{\"unsupported\":[]}");
         List<ScoredChunk> hits = List.of(chunk(1, "材料正文甲。", 0.72));
         QaService service = service(
-                (q, limit) -> hits,
-                (q, limit) -> hits,
+                (q, limit, tenantId) -> hits,
+                (q, limit, tenantId) -> hits,
                 model);
         StringBuilder streamed = new StringBuilder();
 
-        QaAnswer answer = service.ask("问题", streamed::append);
+        QaAnswer answer = service.ask("问题", 1L, streamed::append);
 
         assertThat(answer.status()).isEqualTo(QaAnswer.Status.ANSWERED);
         // 假模型没有流式能力,走默认实现:整段一次给完,调用方看到的仍是"文本在增长"
