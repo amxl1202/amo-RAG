@@ -111,8 +111,8 @@ public class JdbcKeywordRetriever implements KeywordRetriever {
         }
         String pattern = QueryTerms.toRegex(terms);
         List<ScoredChunk> rows = mode == Mode.ILIKE
-                ? jdbcTemplate.query(ILIKE_SQL, this::mapRow, pattern, pattern, limit)
-                : jdbcTemplate.query(TRGM_SQL, this::mapRow, pattern, pattern, query, limit);
+                ? jdbcTemplate.query(ILIKE_SQL, this::mapRow, pattern, pattern, tenantId, limit)
+                : jdbcTemplate.query(TRGM_SQL, this::mapRow, pattern, pattern, query, tenantId, limit);
         return rows == null ? List.of() : List.copyOf(rows);
     }
 

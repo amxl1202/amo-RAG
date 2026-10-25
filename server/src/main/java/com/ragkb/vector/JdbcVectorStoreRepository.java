@@ -104,7 +104,7 @@ public class JdbcVectorStoreRepository implements VectorStoreRepository {
                         (Integer) rs.getObject("page_start"),
                         (Integer) rs.getObject("page_end"),
                         rs.getDouble("score")),
-                literal, model, literal, limit);
+                literal, model, tenantId, literal, limit);
         return results == null ? List.of() : List.copyOf(results);
     }
 

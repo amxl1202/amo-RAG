@@ -139,7 +139,9 @@ class TenantIsolationTest {
     @DisplayName("检索通道不返回别的租户的切片 —— 这条漏了,答案里就会出现别人文档的内容")
     void retrievalNeverCrossesTenant() {
         String sha = "tenant-iso-chunk-" + System.nanoTime();
-        String marker = "跨租户探针词" + System.nanoTime();
+        // 用拉丁串而不是中文短语:TRGM 是模糊匹配,中文短语会和语料里的"多租户"等词撞上,
+        // 导致断言失败的原因不是隔离而是相似度 —— 那会把测试变成噪声
+        String marker = "ZQXPROBE" + System.nanoTime();
         try {
             long docId = insertDocument(sha, 2L);
             jdbc.update("INSERT INTO document_chunks "
@@ -149,12 +151,14 @@ class TenantIsolationTest {
 
             JdbcKeywordRetriever retriever = new JdbcKeywordRetriever(jdbc, JdbcKeywordRetriever.Mode.TRGM);
 
+            // 断言"不出现那条切片",而不是"结果为空":关键词通道是模糊匹配,
+            // 租户一里本来就可能有别的切片相似度够高 —— 那和隔离无关
             assertThat(retriever.search(marker, 5, 1L))
                     .as("租户一不该看到租户二的切片")
-                    .isEmpty();
+                    .noneMatch(chunk -> chunk.documentId() == docId);
             assertThat(retriever.search(marker, 5, 2L))
-                    .as("租户二自己能查到,说明过滤条件写对了而不是查了个空")
-                    .isNotEmpty();
+                    .as("租户二自己能查到,说明过滤条件真的生效,而不是查了个空")
+                    .anyMatch(chunk -> chunk.documentId() == docId);
         } finally {
             cleanUp(sha);
         }
