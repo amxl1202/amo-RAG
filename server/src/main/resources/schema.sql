@@ -118,3 +118,26 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens (family_id);
+
+-- 问答记录:每题一行,用于线上成本与延迟画像
+-- 为什么不复用评估集:评估是离线跑批(59 条固定用例),这里是真实流量 ——
+-- 两边的口径不同,混在一张表里会让"线上拒答率"和"评估拒答率"再也分不开。
+CREATE TABLE IF NOT EXISTS qa_records (
+    id                     BIGSERIAL PRIMARY KEY,
+    question               TEXT        NOT NULL,
+    status                 VARCHAR(16) NOT NULL,
+    reason                 VARCHAR(32),
+    -- 生成与自检分开记:漏掉自检那一次,成本会少算近一半
+    prompt_tokens          INT         NOT NULL DEFAULT 0,
+    completion_tokens      INT         NOT NULL DEFAULT 0,
+    check_prompt_tokens    INT         NOT NULL DEFAULT 0,
+    check_completion_tokens INT        NOT NULL DEFAULT 0,
+    retrieval_ms           INT         NOT NULL DEFAULT 0,
+    answer_ms              INT         NOT NULL DEFAULT 0,
+    citation_count         INT         NOT NULL DEFAULT 0,
+    model                  VARCHAR(64),
+    created_at             TIMESTAMP   NOT NULL DEFAULT now()
+);
+
+-- 汇总查询都按时间倒序过滤,单列索引足够
+CREATE INDEX IF NOT EXISTS idx_qa_records_created ON qa_records (created_at DESC);

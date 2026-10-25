@@ -31,13 +31,16 @@ public class QaController {
     private final QaService qaService;
     private final QaStreamRegistry streamRegistry;
     private final java.util.concurrent.ExecutorService streamExecutor;
+    private final com.ragkb.metrics.QaRecordService recordService;
 
     public QaController(QaService qaService, QaStreamRegistry streamRegistry,
                         @org.springframework.beans.factory.annotation.Qualifier("qaStreamExecutor")
-                        java.util.concurrent.ExecutorService streamExecutor) {
+                        java.util.concurrent.ExecutorService streamExecutor,
+                        com.ragkb.metrics.QaRecordService recordService) {
         this.qaService = qaService;
         this.streamRegistry = streamRegistry;
         this.streamExecutor = streamExecutor;
+        this.recordService = recordService;
     }
 
     /**
@@ -114,6 +117,7 @@ public class QaController {
                     throw new java.io.UncheckedIOException(e);
                 }
             });
+            recordService.recordAsync(question, answer);
             if (answer.status() == QaAnswer.Status.FAILED) {
                 send(emitter, streamId, "error",
                         java.util.Map.of("message", "问答服务暂时不可用", "retryable", true));
@@ -163,6 +167,9 @@ public class QaController {
     @PostMapping
     public ApiResponse<QaResponse> ask(@Valid @RequestBody QaRequest request) {
         QaAnswer answer = qaService.ask(request.question());
+        // 埋点放在这里而不是 QaService 里:评估跑批直接调 service,不该把 59 条固定用例
+        // 混进线上流量,否则"线上拒答率"和"评估拒答率"再也分不开
+        recordService.recordAsync(request.question(), answer);
         if (answer.status() == QaAnswer.Status.FAILED) {
             throw new ApiException(503, "问答服务暂时不可用,请稍后再试");
         }

@@ -79,6 +79,10 @@ app:
     refresh-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
     # 生产(https)必须置 true,否则刷新 cookie 会被浏览器丢弃
     cookie-secure: ${JWT_COOKIE_SECURE:false}
+  # 成本画像用的价格(元 / 千 token)。模型调价只改这里,不碰代码
+  metrics:
+    input-price-per-1k: ${METRICS_INPUT_PRICE:0.0008}
+    output-price-per-1k: ${METRICS_OUTPUT_PRICE:0.002}
   retrieval:
     # 单通道超时:超过就降级为空列表,另一路照常用
     timeout-ms: ${RETRIEVAL_TIMEOUT_MS:800}
