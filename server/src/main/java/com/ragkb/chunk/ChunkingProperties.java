@@ -19,6 +19,7 @@ package com.ragkb.chunk;
  * @param maxTokens     单片硬上限,超过必须切
  * @param overlapTokens 相邻片的重叠量
  */
+@org.springframework.boot.context.properties.ConfigurationProperties(prefix = "app.chunking")
 public record ChunkingProperties(int targetTokens, int maxTokens, int overlapTokens) {
 
     public ChunkingProperties {

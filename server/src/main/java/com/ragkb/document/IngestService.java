@@ -105,12 +105,23 @@ public class IngestService {
         }
     }
 
+    /**
+     * 更新状态。
+     *
+     * <p>失败原因为空时必须走显式 SQL:MyBatis-Plus 的 {@code updateById} 跳过 null 字段,
+     * 用它会"清不掉"上一次的失败原因 —— 文档已恢复正常,界面上还留着旧的报错。
+     */
     private void updateStatus(long documentId, String status, String failReason) {
+        LocalDateTime now = LocalDateTime.now();
+        if (failReason == null) {
+            documentMapper.updateStatusClearingReason(documentId, status, now);
+            return;
+        }
         DocumentEntity patch = new DocumentEntity();
         patch.setId(documentId);
         patch.setStatus(status);
         patch.setFailReason(failReason);
-        patch.setUpdatedAt(LocalDateTime.now());
+        patch.setUpdatedAt(now);
         documentMapper.updateById(patch);
     }
 

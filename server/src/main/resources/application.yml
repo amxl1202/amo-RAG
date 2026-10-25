@@ -7,6 +7,18 @@ spring:
     # (CI 与别人克隆仓库时没有 .env,应当照常能起)。
     import: optional:file:.env[.properties]
   datasource:
+    # 拿不到连接就等 5 秒,而不是无限等:检索线程被连接池拖住时,表现是"整个服务变慢",
+    # 很难定位到是连接池
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 3000
+      maximum-pool-size: 10
+      minimum-idle: 2
+      # 传给 PG 驱动的超时(秒):库变慢时让 SQL 自己失败,而不是占着线程
+      data-source-properties:
+        connectTimeout: 5
+        socketTimeout: 60
+        loginTimeout: 5
     url: ${DB_URL:jdbc:postgresql://localhost:5433/rag_kb}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:rag123456}
@@ -82,6 +94,15 @@ app:
     refresh-ttl-days: ${JWT_REFRESH_TTL_DAYS:7}
     # 生产(https)必须置 true,否则刷新 cookie 会被浏览器丢弃
     cookie-secure: ${JWT_COOKIE_SECURE:false}
+  # 入库队列:满则拒绝并标记 FAILED,不把延迟转移给上传请求
+  ingest:
+    # 启动时把"停在中间态超过 N 分钟"的文档重新入队 —— 进程被强杀后的唯一补偿
+    recover-after-minutes: ${INGEST_RECOVER_MINUTES:5}
+  # 切片参数。改这里必须重跑评估:切片边界一变,所有检索指标都要重测
+  chunking:
+    target-tokens: ${CHUNK_TARGET_TOKENS:300}
+    max-tokens: ${CHUNK_MAX_TOKENS:400}
+    overlap-tokens: ${CHUNK_OVERLAP_TOKENS:48}
   # 成本画像用的价格(元 / 千 token)。模型调价只改这里,不碰代码
   metrics:
     input-price-per-1k: ${METRICS_INPUT_PRICE:0.0008}

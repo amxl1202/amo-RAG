@@ -94,7 +94,7 @@
 **成本** 1.5 天（建表 + 异步写入 + 聚合查询 + 一个前端小面板可选）。
 **面试讲法**：*"我不满足于记操作日志，我要知道每一题花了多少钱、慢在检索还是生成、拒答率离基线差多少。"*
 
-### D. 租户隔离 —— ✅ 已实现（2026-10-25），**真库验证待补**
+### D. 租户隔离 —— ✅ 已完成并验证（2026-10-25）
 
 > 实现要点：`users` / `documents` 加 `tenant_id`（存量默认 1）；JWT 带 `tenant` 声明，
 > `AuthPrincipal` 增加 `tenantId`；**检索链路的每个方法都加 `tenantId` 必填参数**（`ChunkSearcher` /
@@ -219,3 +219,48 @@ Pinia 收益不大——当前全局状态只有令牌与用户。
 - 群组协作 / 邀请审批（产品功能，不是技术深度）
 - MinIO 分片上传（没有 200MB 的场景）
 - Pinia（全局状态只有两个字段）
+
+
+---
+
+## 附:解析层合并批（2026-10-26）
+
+历史挂账里唯一有硬期限的一批（BUG-1 + P-23 + N7），比原计划先做。三项都改在解析层，
+所以是一次重切片 + 重向量化 + 一次重基线，不分开付两次成本。
+
+| 项 | 修法 | 验证 |
+|---|---|---|
+| BUG-1 同行分段丢空格 | `writeString` 按"前一段右端 → 这一段左端"的间距补空格（>0.22em），中文不补 | `alpha`+`beta` 不再粘成 `alphabeta` |
+| P-23 段内换行当句边界 | 解析阶段就把视觉行接起来，段落内不再留 `\n`；中文不加空格、英文补空格 | 段落块不含换行；两处旧用例的契约同步更新 |
+| N7 编号列表被当标题 | `headingLevel` 里把 LIST_ITEM 判定提到"编号标题"之前 | "1. Install" / "2. Troubleshoot" 判为列表项 |
+
+**重基线结果**（59 条评估集，同一套用例）：
+
+| 方案 | recall@5 | MRR | 变化 |
+|---|---|---|---|
+| ILIKE / TRGM | 0.9796 | 0.8754 | recall +2.04，MRR +4.34 |
+| VECTOR | 0.9184 | 0.7988 | recall −2.04，MRR +3.31 |
+| HYBRID k=60 | 1.0000 | 0.8731 | **MRR +2.48** |
+
+关键词通道受益最明显（粘连与跨行都影响字面匹配）；纯向量 recall 掉 2 点但 MRR 涨 3.3，
+是切片变长后的正常位移；混合保持满分且 MRR 提升 —— 排序更准了。
+
+
+---
+
+## 附:稳定性批（2026-10-26）
+
+不是"学功能"，是补历史欠账 —— 五项都在"出问题时才会暴露"的路径上。
+
+| 项 | 问题 | 修法 |
+|---|---|---|
+| N8 线程池 | `newFixedThreadPool` 无界队列 + `shutdownNow` + 重启不恢复 | 有界队列（50），满则**拒绝并标 FAILED 写明原因**（不用 CallerRuns，那是把延迟转给用户）；关闭改 `shutdown` + 30 秒等待；`ApplicationReadyEvent` 扫描"中间态且超过 5 分钟未更新"的文档重新入队 |
+| P2-14 fail_reason | `updateById` 跳过 null，"成功时清空失败原因"静默失效 | 专门的 `UPDATE ... SET fail_reason = NULL` |
+| P2-15 状态机 | 向量化完成后仍停在 CHUNKED | 向量化成功置 **READY**；重新切片回落 CHUNKED（切片变了，旧向量已失效） |
+| P2-13 JDBC 超时 | 连接池与 SQL 都没有超时，库变慢会拖住线程 | Hikari `connection-timeout 5s` + PG `socketTimeout 60s` |
+| N11 切片参数 | `ChunkingProperties` 没绑定，yml 里写什么都没用 | `@ConfigurationProperties` + `@EnableConfigurationProperties` + 显式 `@Autowired` 带参构造器 |
+
+**实测**：重启服务后对文档 5 依次 ingest / vectorize → 状态 `CHUNKED` → `READY`，`fail_reason` 为空。
+
+**新增测试** 4 条（`IngestTriggerTest`）：正常触发、队列满拒绝并标记 FAILED、启动恢复复位并入队、
+无卡住文档时不误触发。

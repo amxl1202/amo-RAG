@@ -33,6 +33,7 @@ public class VectorizeService {
     private final DocumentChunkMapper chunkMapper;
     private final VectorStoreRepository vectorStore;
     private final EmbeddingClient embeddingClient;
+    private final com.ragkb.document.mapper.DocumentMapper documentMapper;
 
     /** @param totalTokens 接口回报的用量,用来核对成本;不是本地估算 */
     public record VectorizeResult(long documentId, int chunkCount, int totalTokens) {
@@ -61,6 +62,9 @@ public class VectorizeService {
             vectors.add(new ChunkVector(chunks.get(i).getId(), embeddingClient.model(), result.vectors().get(i)));
         }
         int saved = vectorStore.saveAll(vectors);
+        // READY 只在"切片 + 向量"都齐了之后才置:之前 CHUNKED 表示"能搜关键词、搜不到语义",
+        // 这个区别对使用者有意义 —— 界面上"已切片(未向量化)"和"可检索"不该是同一个状态
+        documentMapper.updateStatusClearingReason(documentId, "READY", java.time.LocalDateTime.now());
         log.info("document vectorized: id={}, chunks={}, tokens={}", documentId, saved, result.totalTokens());
         return new VectorizeResult(documentId, saved, result.totalTokens());
     }

@@ -52,6 +52,14 @@ public class StructureAwareChunkSplitter implements ChunkSplitter {
         this(ChunkingProperties.defaults());
     }
 
+    /**
+     * 生产用的构造器。
+     *
+     * <p>类里还有一个无参构造器(给预览工具与单测用),Spring 在两个构造器之间
+     * <b>会选无参那个</b> —— 不加这个注解,{@code application.yml} 里的 app.chunking.* 永远不会生效,
+     * 而一切看起来都正常:用的只是代码里的默认值。这种"配置写了但没生效"最难发现。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public StructureAwareChunkSplitter(ChunkingProperties properties) {
         this.properties = properties;
     }
