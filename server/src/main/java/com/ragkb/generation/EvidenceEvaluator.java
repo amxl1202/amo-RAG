@@ -42,6 +42,10 @@ import java.util.TreeSet;
  */
 public class EvidenceEvaluator {
 
+    /** 材料自相矛盾时的固定答复:说清"为什么不能答",而不是含糊地说"材料不足"。 */
+    public static final String CONTRADICTORY = "材料中对这个问题存在互相矛盾的说法,无法给出唯一答案。";
+
+
     /**
      * 阶段一的两个阈值。
      *
@@ -132,6 +136,15 @@ public class EvidenceEvaluator {
         MODEL_INSUFFICIENT,
         /** 逐句自检把每一句都剔光了。 */
         UNSUPPORTED,
+        /**
+         * 材料里对同一个问题存在互相矛盾的说法。
+         *
+         * <p>这是 RAG 最容易装作没看见的一种情况:检索到了两段都"有支撑"的材料,
+         * 但它们结论相反(比如一处说阈值 0.35、另一处说 0.5)。此时按相似度挑一段作答,
+         * 用户会被误导得更彻底 —— 因为他看到的是"有引用、有依据"的答案。
+         * 正确做法是把冲突摆出来并拒绝给唯一结论。
+         */
+        CONTRADICTORY_EVIDENCE,
         /** 自检本身失败,无法判断 —— 这时不拒答,见 {@link Verdict#unavailable()}。 */
         CHECK_UNAVAILABLE
     }
@@ -257,15 +270,24 @@ public class EvidenceEvaluator {
 
         List<ParsedSentence> judgeable = answer.sentences().stream().filter(s -> !s.blank()).toList();
         TreeSet<Integer> unsupported;
+        boolean contradictory;
         ChatResponse response;
         try {
             response = askUnsupported(prompt, judgeable, checker);
             unsupported = parseUnsupported(response.content(), judgeable.size());
+            contradictory = parseContradiction(response.content());
         } catch (ChatException e) {
             // 自检坏了不能变成"系统开始拒答":保留原答案,把 unavailable 标出来。
             // keptLabels 给全集:整段答案都还在,引用列表也就不该缩水
             return new Verdict(false, Reason.CHECK_UNAVAILABLE, answer.sanitized(),
                     0, judgeable.size(), true, labelsOf(judgeable), 0, 0);
+        }
+
+        if (contradictory) {
+            // 冲突优先于"删掉几句继续答":删句只能解决"没支撑",解决不了"两种说法打架"
+            return new Verdict(true, Reason.CONTRADICTORY_EVIDENCE, CONTRADICTORY,
+                    judgeable.size(), 0, false, java.util.Set.of(),
+                    response.promptTokens(), response.completionTokens());
         }
 
         List<ParsedSentence> kept = new ArrayList<>();
@@ -304,14 +326,18 @@ public class EvidenceEvaluator {
             numbered.append(i + 1).append(". ").append(sentences.get(i).plain().strip()).append('\n');
         }
         String systemPrompt = """
-                你是严格的审稿人。你只做一件事:判断给定句子能否由「材料」直接支撑。
-                判断标准:句子的内容必须能在材料里找到对应表述;需要额外常识、推测、概括才能成立的,视为没有支撑。
-                只输出 JSON,不要输出任何解释、前后缀或代码块标记。格式:{"unsupported":[2,5]}
-                全部都有支撑时输出 {"unsupported":[]}。
+                你是严格的审稿人。你做两件事:
+                1) 判断给定句子能否由「材料」直接支撑。判断标准:句子的内容必须能在材料里找到对应表述;
+                   需要额外常识、推测、概括才能成立的,视为没有支撑。
+                2) 判断「材料内部」是否存在互相矛盾的说法 —— 不同段落对同一件事给出相反结论,
+                   或给出两个无法同时成立的数值。仅当材料与材料之间冲突时才算;句子与材料冲突属于第 1 项。
+                只输出 JSON,不要输出任何解释、前后缀或代码块标记。
+                格式:{"unsupported":[2,5],"conflict":false}
+                全部都有支撑且材料无冲突时输出 {"unsupported":[],"conflict":false}。
                 """;
         String userPrompt = "材料:\n" + prompt.material()
                 + "\n\n待判定句子:\n" + numbered
-                + "请输出没有材料支撑的句子序号。";
+                + "请输出没有材料支撑的句子序号,以及材料是否自相矛盾。";
 
         return checker.complete(systemPrompt, userPrompt);
     }
@@ -343,6 +369,29 @@ public class EvidenceEvaluator {
             }
         }
         return result;
+    }
+
+    /**
+     * 从自检输出里读 conflict 字段。
+     *
+     * <p>缺失一律当 false:老版本的提示词不会输出这个字段,而"读不到就当有冲突"
+     * 会让所有答案被拒 —— 降级方向必须是"按原来的行为走"。
+     */
+    static boolean parseContradiction(String content) {
+        if (content == null) {
+            return false;
+        }
+        String lower = content.toLowerCase(Locale.ROOT);
+        int key = lower.indexOf("conflict");
+        if (key < 0) {
+            return false;
+        }
+        int colon = lower.indexOf(':', key);
+        if (colon < 0) {
+            return false;
+        }
+        String tail = lower.substring(colon + 1, Math.min(lower.length(), colon + 20)).trim();
+        return tail.startsWith("true");
     }
 
     /** 汇总一批句子里出现过的编号(去重)。 */

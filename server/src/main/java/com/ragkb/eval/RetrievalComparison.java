@@ -73,6 +73,19 @@ public final class RetrievalComparison {
         List<Config> configs = new ArrayList<>();
         configs.add(new Config("ILIKE", (q, limit) -> contents(ilike.search(q, limit, EVAL_TENANT))));
         configs.add(new Config("TRGM", (q, limit) -> contents(trgm.search(q, limit, EVAL_TENANT))));
+        // 查询改写只喂关键词通道:向量通道本来就擅长"换个说法",再改是白花钱
+        com.ragkb.generation.ChatModel chatModel = chatModel(dotEnv);
+        if (vectorReady && chatModel != null) {
+            com.ragkb.retrieval.QueryRewriter rewriter = new com.ragkb.retrieval.QueryRewriter(chatModel);
+            configs.add(new Config("HYBRID+RW", (q, limit) -> {
+                String rewritten = rewriter.rewrite(q);
+                List<ScoredChunk> left = vector.search(q, limit * 2, EVAL_TENANT);
+                List<ScoredChunk> right = trgm.search(rewritten, limit * 2, EVAL_TENANT);
+                return fuser.fuse(left, right, 60, limit).stream()
+                        .map(hit -> hit.chunk().content())
+                        .toList();
+            }));
+        }
         if (vectorReady) {
             configs.add(new Config("VECTOR", (q, limit) -> contents(vector.search(q, limit, EVAL_TENANT))));
             for (int k : new int[]{0, 20, 60}) {
@@ -126,6 +139,25 @@ public final class RetrievalComparison {
             float[] vector = cache.computeIfAbsent(question, client::embedQuery);
             return repository.search(vector, limit, tenantId);
         }
+    }
+
+    /** 改写要用对话模型;没有 Key 时返回 null(该项配置直接跳过)。 */
+    private static com.ragkb.generation.ChatModel chatModel(Map<String, String> env) {
+        String apiKey = DotEnv.get(env, "DASHSCOPE_API_KEY", "");
+        if (apiKey.isBlank()) {
+            return null;
+        }
+        com.ragkb.generation.ChatProperties defaults = com.ragkb.generation.ChatProperties.defaults();
+        com.ragkb.generation.ChatProperties properties = new com.ragkb.generation.ChatProperties(
+                apiKey,
+                DotEnv.get(env, "CHAT_MODEL", defaults.model()),
+                DotEnv.get(env, "CHAT_ENDPOINT", defaults.endpoint()),
+                // 改写要稳定:温度调低,避免同一问题两次改写差别很大
+                0.0,
+                256,
+                5,
+                2);
+        return new com.ragkb.generation.DashScopeChatModel(properties);
     }
 
     private static EmbeddingClient embeddingClient(Map<String, String> env) {

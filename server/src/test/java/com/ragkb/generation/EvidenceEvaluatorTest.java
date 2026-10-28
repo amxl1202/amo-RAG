@@ -263,4 +263,42 @@ class EvidenceEvaluatorTest {
 
         assertThat(gate.reason()).isEqualTo(EvidenceEvaluator.Reason.NO_HITS);
     }
+
+    @Test
+    @DisplayName("材料自相矛盾:整题拒答并说明原因,而不是挑一段作答")
+    void contradictoryMaterialsRefuse() {
+        ParsedAnswer parsed = new CitationParser().parse("阈值取 0.35 比较稳妥[E1]。", prompt());
+        ScriptedChecker checker = new ScriptedChecker("{\"unsupported\":[],\"conflict\":true}");
+
+        EvidenceEvaluator.Verdict verdict = evaluator.verify(prompt(), parsed, checker);
+
+        assertThat(verdict.refuse()).isTrue();
+        assertThat(verdict.reason()).isEqualTo(EvidenceEvaluator.Reason.CONTRADICTORY_EVIDENCE);
+        assertThat(verdict.text())
+                .as("拒答文案要说清是'材料打架',不能含糊成'材料不足'")
+                .isEqualTo(EvidenceEvaluator.CONTRADICTORY);
+        assertThat(verdict.keptLabels()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("自检输出里没有 conflict 字段时按'无冲突'处理 —— 老提示词必须继续可用")
+    void missingConflictFieldDefaultsToFalse() {
+        ParsedAnswer parsed = new CitationParser().parse("阈值取 0.35 比较稳妥[E1]。", prompt());
+        ScriptedChecker checker = new ScriptedChecker("{\"unsupported\":[]}");
+
+        EvidenceEvaluator.Verdict verdict = evaluator.verify(prompt(), parsed, checker);
+
+        assertThat(verdict.refuse()).isFalse();
+        assertThat(verdict.reason()).isEqualTo(EvidenceEvaluator.Reason.NONE);
+    }
+
+    @Test
+    @DisplayName("conflict 解析容忍围栏、大小写与多余空白")
+    void conflictParsingIsTolerant() {
+        assertThat(EvidenceEvaluator.parseContradiction("```json\n{\"unsupported\":[],\"CONFLICT\": true}\n```")).isTrue();
+        assertThat(EvidenceEvaluator.parseContradiction("{\"unsupported\":[],\"conflict\": false}")).isFalse();
+        assertThat(EvidenceEvaluator.parseContradiction("{\"unsupported\":[]}")).isFalse();
+        assertThat(EvidenceEvaluator.parseContradiction("conflict")).isFalse();
+        assertThat(EvidenceEvaluator.parseContradiction(null)).isFalse();
+    }
 }
