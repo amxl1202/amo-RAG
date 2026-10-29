@@ -114,6 +114,15 @@ class SecurityChainTest {
     }
 
     @Test
+    @DisplayName("live / ready 探针也必须免鉴权 —— 探针不带令牌,401 会被编排读成不健康")
+    void probesArePublic() throws Exception {
+        // 这条是端到端抓出来的:拆分 live/ready 时只放行了 /health,
+        // 结果 kubectl/docker 的健康检查拿到 401,容器被判定不健康
+        assertThat(get("/health/live", null).statusCode()).isEqualTo(200);
+        assertThat(get("/health/ready", null).statusCode()).isEqualTo(200);
+    }
+
+    @Test
     @DisplayName("默认拒绝:没令牌访问业务接口得到 401,而不是 404/403")
     void protectedEndpointRejectsAnonymous() throws Exception {
         HttpResponse<String> response = get("/api/documents", null);

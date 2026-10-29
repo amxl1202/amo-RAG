@@ -69,7 +69,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/register",
                                 "/api/auth/refresh", "/api/auth/logout").permitAll()
                         // 探活与错误页给运维和容器探测用
-                        .requestMatchers("/health", "/error").permitAll()
+                        // live/ready 也必须免鉴权:探针不会带令牌,401 会被编排读成"不健康"
+                        .requestMatchers("/health", "/health/live", "/health/ready", "/error").permitAll()
                         // 其余一律需要身份 —— 包括将来新加的接口,不需要记得加注解
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
