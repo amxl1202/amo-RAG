@@ -1,6 +1,6 @@
 # 接手文档（给下一个会话看）
 
-> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**263 个（全部带库跑通，0 跳过）**
+> 最后更新：2026-10-22 凌晨　当前 HEAD：见 `git log -1`　测试：**265 个（全部带库跑通，0 跳过）**
 > 这份文件的目的：让任何一个新会话在 5 分钟内知道"现在在哪、下一步做什么、哪些坑别再踩"。
 > 它不替代 `PLAN.md`（那是完整计划），只做交接。
 
@@ -10,7 +10,7 @@
 
 **L1 + L2 全部打通**：浏览器登录 → 上传 → 解析 → 切片 → 向量化 → 双通道检索 → RRF →
 门控 → 提示词 → 生成 → 引用解析 → 自检 → 拒答 → 点引用看原文。
-后端 263 个测试（19 条依赖真库，库没起时 skip；推送前跑 `REQUIRE_DB=1` 强制它们真跑），前端有 6 张真实截图在 `docs/screenshots/`。
+后端 265 个测试（19 条依赖真库，库没起时 skip；推送前跑 `REQUIRE_DB=1` 强制它们真跑），前端有 6 张真实截图在 `docs/screenshots/`。
 **剩下的是 L3（可选增强）与已登记的 P2 项。**
 
 ---
@@ -83,6 +83,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 | **矛盾检测** | 自检第二问：材料之间冲突则整题拒答（原因码 CONTRADICTORY_EVIDENCE） | 见 git log |
 | **提示词注入防护** | 文件名/章节标题清洗（去换行与书名号、截断），防伪造材料块头 | 见 git log |
 | **收尾批（P3）** | `/health` 拆 live/ready（ready 里 `SELECT 1`）；文档列表分页 + 状态过滤；删两个死依赖；PLAN 状态回填 | 见 git log |
+| **第八批响应** | 租户校验下沉进 `ingest/vectorize`（含启动恢复用文档自身租户）；`qa_records` 加租户并修掉指标聚合泄漏 | 见 git log |
 
 **库里现在有**：5 份文档、42 个切片、42 条 512 维向量（`text-embedding-v3`）。
 
@@ -109,7 +110,7 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 
 | 项 | 数值 | 含义 |
 |---|---|---|
-| 测试规模 | **263 个** | 0 失败；库没起时 19 个 skip；`REQUIRE_DB=1` 时 skip 变失败 |
+| 测试规模 | **265 个** | 0 失败；库没起时 19 个 skip；`REQUIRE_DB=1` 时 skip 变失败 |
 | token 倍率（embedding） | **0.776** | 本地 cl100k 对 embedding 输入高估 |
 | token 倍率（chat 提示词） | **0.666 / 0.653** | 生成输入高估约 1/3，比 embedding 更低 |
 | 检索（59 条） | HYBRID k=60：recall@5 **1.0** / MRR **0.8483**；纯向量 0.9388 / 0.7657 | 融合首次**真正**超过单通道 |
@@ -201,7 +202,14 @@ java -cp <classes;cp> com.ragkb.eval.RetrievalComparison samples/eval/cases.json
 36. **`/health` 恒返回 UP 等于没有探针**：容器编排会继续往一个连不上库的实例打流量。
     live 与 ready 必须分开：live 看进程（决定重启），ready 看依赖（决定摘流量）。
 37. **分页参数必须在进查询前收敛**：`size=100000` 不是"调用方的问题"，是服务端少了上限校验。
-38. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
+38. **"校验在 controller、操作在 service"是单点防线**：`DocumentController` 先查归属再调
+    `ingest(id)`，看起来对；但 `ingest` 本身是公开方法、不认租户，任何新调用点（定时任务、
+    启动恢复、内部 API）都能绕过。检索层用"tenantId 必填"做到了编译期强制，文档操作层也要一致。
+    **注意恢复路径**：`IngestTrigger` 是跨租户运行的，加 tenantId 时必须传"文档自己的租户"，
+    硬编码成 1 会让租户 2 的文档静默停在 UPLOADED。
+39. **聚合口径的越权不会报错**：`/api/metrics/summary` 原来对任何登录用户返回**全平台**题量、
+    拒答率与成本。明细越权会被 404 挡住，聚合越权只会安静地泄漏——过滤必须写在查询里。
+40. **Boot 4 把 WebMvc 的测试自动配置拆成了独立模块**（`spring-boot-test-autoconfigure` 里已经没有
     `@AutoConfigureMockMvc`，`TestRestTemplate` 也不在 `spring-boot-test` 里）。
     所以认证的端到端验收用 `@SpringBootTest(RANDOM_PORT)` + JDK `HttpClient` 真打端口，没有引入新依赖。
 

@@ -44,7 +44,15 @@ public class VectorizeService {
      *
      * @throws ApiException 文档没有切片(400)
      */
-    public VectorizeResult vectorize(long documentId) {
+    public VectorizeResult vectorize(long documentId, long tenantId) {
+        // 与 ingest 一致:归属校验在 service 内部,不给"绕过 controller 直接调"留口子
+        DocumentEntity document = documentMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DocumentEntity>()
+                        .eq(DocumentEntity::getId, documentId)
+                        .eq(DocumentEntity::getTenantId, tenantId));
+        if (document == null) {
+            throw ApiException.notFound("文档不存在: id=" + documentId);
+        }
         List<DocumentChunkEntity> chunks = chunkMapper.selectList(
                 new LambdaQueryWrapper<DocumentChunkEntity>()
                         .eq(DocumentChunkEntity::getDocumentId, documentId)

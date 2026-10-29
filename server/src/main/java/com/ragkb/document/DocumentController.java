@@ -47,9 +47,9 @@ public class DocumentController {
     @PostMapping("/{id}/ingest")
     public ApiResponse<IngestService.IngestResult> ingest(@PathVariable Long id,
                                                            @AuthenticationPrincipal AuthPrincipal principal) {
-        // 先验归属再做重活:否则别的租户可以用你的 id 触发一次昂贵的重新解析
-        documentService.getById(id, principal.tenantId());
-        return ApiResponse.ok(ingestService.ingest(id));
+        // 归属校验已经下沉到 service(见 IngestService.ingest 的注释),
+        // 这里是唯一调用点,不需要再前置查一次
+        return ApiResponse.ok(ingestService.ingest(id, principal.tenantId()));
     }
 
     /**
@@ -61,8 +61,7 @@ public class DocumentController {
     @PostMapping("/{id}/vectorize")
     public ApiResponse<VectorizeService.VectorizeResult> vectorize(@PathVariable Long id,
                                                                     @AuthenticationPrincipal AuthPrincipal principal) {
-        documentService.getById(id, principal.tenantId());
-        return ApiResponse.ok(vectorizeService.vectorize(id));
+        return ApiResponse.ok(vectorizeService.vectorize(id, principal.tenantId()));
     }
 
     /**

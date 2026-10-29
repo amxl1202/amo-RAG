@@ -44,9 +44,9 @@ class IngestTriggerTest {
     void triggerRunsIngest() {
         trigger = new IngestTrigger(ingestService, documentMapper);
 
-        trigger.trigger(42L);
+        trigger.trigger(42L, 1L);
 
-        verify(ingestService, timeout(2000)).ingestQuietly(42L);
+        verify(ingestService, timeout(2000)).ingestQuietly(eq(42L), eq(1L));
     }
 
     @Test
@@ -56,12 +56,12 @@ class IngestTriggerTest {
         doAnswer(invocation -> {
             block.await(5, TimeUnit.SECONDS);
             return null;
-        }).when(ingestService).ingestQuietly(anyLong());
+        }).when(ingestService).ingestQuietly(anyLong(), anyLong());
         trigger = new IngestTrigger(ingestService, documentMapper);
 
         // 2 个线程被占住 + 队列 50 = 第 53 个开始被拒绝
         for (int i = 0; i < 60; i++) {
-            trigger.trigger(i);
+            trigger.trigger(i, 1L);
         }
 
         org.mockito.ArgumentCaptor<DocumentEntity> captor =
@@ -81,13 +81,15 @@ class IngestTriggerTest {
         DocumentEntity stuck = new DocumentEntity();
         stuck.setId(7L);
         stuck.setStatus("PARSING");
+        // 租户 2 的文档:恢复必须用它自己的租户,而不是硬编码成 1
+        stuck.setTenantId(2L);
         when(documentMapper.findStuck(any())).thenReturn(List.of(stuck));
         trigger = new IngestTrigger(ingestService, documentMapper);
 
         trigger.recoverStuckDocuments();
 
         verify(documentMapper).updateStatusClearingReason(eq(7L), eq("UPLOADED"), any());
-        verify(ingestService, timeout(2000)).ingestQuietly(7L);
+        verify(ingestService, timeout(2000)).ingestQuietly(eq(7L), eq(2L));
     }
 
     @Test
@@ -101,6 +103,6 @@ class IngestTriggerTest {
         // findStuck 本身当然会被调用;这里要证明的是"没有任何文档被复位或重新入队"
         verify(documentMapper, org.mockito.Mockito.never())
                 .updateStatusClearingReason(anyLong(), org.mockito.ArgumentMatchers.anyString(), any());
-        verify(ingestService, org.mockito.Mockito.never()).ingestQuietly(anyLong());
+        verify(ingestService, org.mockito.Mockito.never()).ingestQuietly(anyLong(), anyLong());
     }
 }

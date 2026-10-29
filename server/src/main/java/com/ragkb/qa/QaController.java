@@ -121,7 +121,7 @@ public class QaController {
                     throw new java.io.UncheckedIOException(e);
                 }
             });
-            recordService.recordAsync(question, answer);
+            recordService.recordAsync(question, answer, tenantId);
             if (answer.status() == QaAnswer.Status.FAILED) {
                 send(emitter, streamId, "error",
                         java.util.Map.of("message", "问答服务暂时不可用", "retryable", true));
@@ -187,7 +187,7 @@ public class QaController {
         QaAnswer answer = qaService.ask(request.question(), tenantId);
         // 埋点放在这里而不是 QaService 里:评估跑批直接调 service,不该把 59 条固定用例
         // 混进线上流量,否则"线上拒答率"和"评估拒答率"再也分不开
-        recordService.recordAsync(request.question(), answer);
+        recordService.recordAsync(request.question(), answer, tenantId);
         if (answer.status() == QaAnswer.Status.FAILED) {
             throw new ApiException(503, "问答服务暂时不可用,请稍后再试");
         }

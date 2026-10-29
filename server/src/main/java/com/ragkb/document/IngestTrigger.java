@@ -77,20 +77,22 @@ public class IngestTrigger {
     private final class IngestTask implements Runnable {
 
         private final long documentId;
+        private final long tenantId;
 
-        private IngestTask(long documentId) {
+        private IngestTask(long documentId, long tenantId) {
             this.documentId = documentId;
+            this.tenantId = tenantId;
         }
 
         @Override
         public void run() {
-            ingestService.ingestQuietly(documentId);
+            ingestService.ingestQuietly(documentId, tenantId);
         }
     }
 
-    public void trigger(long documentId) {
+    public void trigger(long documentId, long tenantId) {
         try {
-            pool.execute(new IngestTask(documentId));
+            pool.execute(new IngestTask(documentId, tenantId));
             log.debug("ingest triggered: documentId={}", documentId);
         } catch (RejectedExecutionException e) {
             // 拒绝策略里已经把文档标成 FAILED,这里只记日志,不让异常冒到上传接口之外
@@ -114,7 +116,9 @@ public class IngestTrigger {
         log.warn("recovering {} documents stuck in intermediate status", stuck.size());
         for (DocumentEntity document : stuck) {
             documentMapper.updateStatusClearingReason(document.getId(), "UPLOADED", LocalDateTime.now());
-            trigger(document.getId());
+            // 用文档自己的租户,而不是"系统身份":恢复逻辑不该拥有跨租户的写权,
+            // 它只是替这份文档重跑一次它本来就该做的事
+            trigger(document.getId(), document.getTenantId() == null ? 1L : document.getTenantId());
         }
     }
 

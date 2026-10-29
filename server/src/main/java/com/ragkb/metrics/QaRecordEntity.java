@@ -46,5 +46,8 @@ public class QaRecordEntity {
 
     private String model;
 
+    /** 所属租户。指标聚合必须按它过滤,否则任何登录用户都能看到全平台的用量与成本。 */
+    private Long tenantId;
+
     private LocalDateTime createdAt;
 }

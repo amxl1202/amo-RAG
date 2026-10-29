@@ -28,9 +28,17 @@ public class MetricsController {
         this.properties = properties;
     }
 
+    /**
+     * @param principal 统计只返回<b>本租户</b>的数据。聚合口径的越权不会报错,
+     *                  只会安静地把别家的用量告诉你,所以过滤必须写在这一层而不是文档里
+     */
     @GetMapping("/summary")
-    public ApiResponse<MetricsSummary> summary(@RequestParam(defaultValue = "7") int days) {
+    public ApiResponse<MetricsSummary> summary(
+            @RequestParam(defaultValue = "7") int days,
+            @org.springframework.security.core.annotation.AuthenticationPrincipal
+            com.ragkb.auth.AuthPrincipal principal) {
         int window = Math.max(1, Math.min(days, MAX_DAYS));
-        return ApiResponse.ok(MetricsSummary.from(mapper.summarize(window), properties, window));
+        return ApiResponse.ok(MetricsSummary.from(
+                mapper.summarize(principal.tenantId(), window), properties, window));
     }
 }

@@ -55,8 +55,14 @@ public class IngestService {
      *
      * @throws com.ragkb.common.ApiException 文档不存在(404)
      */
-    public IngestResult ingest(long documentId) {
-        DocumentEntity document = documentMapper.selectById(documentId);
+    public IngestResult ingest(long documentId, long tenantId) {
+        // 归属校验放在这里,而不是交给 controller 前置检查:
+        // 校验与操作分离时,任何新调用点(定时任务、恢复、内部 API)都能绕过租户检查,
+        // 而检索链路早已用"tenantId 必填"把这类遗漏变成编译错误 —— 两边标准要一致
+        DocumentEntity document = documentMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<DocumentEntity>()
+                        .eq(DocumentEntity::getId, documentId)
+                        .eq(DocumentEntity::getTenantId, tenantId));
         if (document == null) {
             throw com.ragkb.common.ApiException.notFound("文档不存在: id=" + documentId);
         }
@@ -88,9 +94,9 @@ public class IngestService {
      * 由上传流程调用 —— 上传请求不该等着解析完成(20 页 PDF 要几百毫秒到几秒)。
      * 失败信息已经写进 status / fail_reason,这里只负责不让异常逃到线程池外面。
      */
-    public void ingestQuietly(long documentId) {
+    public void ingestQuietly(long documentId, long tenantId) {
         try {
-            ingest(documentId);
+            ingest(documentId, tenantId);
         } catch (RuntimeException e) {
             log.debug("ingest quietly swallowed: id={}, reason={}", documentId, e.toString());
         }

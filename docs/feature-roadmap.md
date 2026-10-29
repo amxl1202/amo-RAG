@@ -300,3 +300,18 @@ Pinia 收益不大——当前全局状态只有令牌与用户。
 
 **新增测试** 4 条（`IngestTriggerTest`）：正常触发、队列满拒绝并标记 FAILED、启动恢复复位并入队、
 无卡住文档时不误触发。
+
+
+---
+
+## 附:第八批审核的处置（2026-10-29）
+
+| 编号 | 结论 | 处置 |
+|---|---|---|
+| ISSUE-37 ingest/vectorize 租户校验在 controller | 属实 | `ingest(id, tenantId)` / `vectorize(id, tenantId)` 内部按 (id, tenant) 查；controller 去掉前置检查；**启动恢复传文档自身的 tenant**，不硬编码 |
+| ISSUE-38 qa_records 无租户 | 属实，且比审核判断更重 | 加列 + 回填；埋点收 tenant；聚合查询 `WHERE tenant_id = ?`。**原实现向任何登录用户返回全平台数字，是聚合层面的泄漏，不是"推断不出"** |
+| ISSUE-39 内容寻址 + 将来删除 | 属实（设计备忘） | 暂不动，删除功能实现时用引用计数 |
+| P2-19 "post-filter 返回不足 limit" | **依据不成立** | SQL 里 `WHERE` 在 `ORDER BY/LIMIT` 之前；实测执行计划是 Seq Scan（42 条切片），不存在"先取回再过滤"。相邻的真风险是 pgvector HNSW 带过滤时可能返回不足 LIMIT 行（0.8.3 支持 `hnsw.iterative_scan`），数据量上来才会显形 —— 记为"潜在风险 + 触发条件"，不当作正在发生的缺陷 |
+
+新增测试：指标聚合按租户隔离（造一条 token=999999 的租户 2 记录，验证租户 1 看不到、租户 2 看得到）；
+`IngestTriggerTest` 补了"恢复用文档自身租户"的断言。

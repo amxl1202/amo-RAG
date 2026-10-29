@@ -219,4 +219,30 @@ class TenantIsolationTest {
             cleanUp(sha);
         }
     }
+
+    @Test
+    @DisplayName("指标聚合按租户过滤:统计不能把别家的用量与成本告诉你")
+    void metricsAreTenantScoped() throws Exception {
+        long marker = 999_999L;
+        try {
+            // 造一条"一眼能认出来"的租户 2 记录:token 数取一个不可能自然出现的值
+            jdbc.update("INSERT INTO qa_records (question, status, prompt_tokens, tenant_id) "
+                    + "VALUES ('聚合隔离探针', 'ANSWERED', ?, 2)", (int) marker);
+            String token1 = tokenFor("iso_m1_" + System.nanoTime(), 1L);
+            String token2 = tokenFor("iso_m2_" + System.nanoTime(), 2L);
+
+            String asTenant1 = get("/api/metrics/summary?days=1", token1).body();
+            String asTenant2 = get("/api/metrics/summary?days=1", token2).body();
+
+            assertThat(asTenant1)
+                    .as("租户 1 的汇总里不该出现租户 2 的那条超大记录")
+                    .doesNotContain(String.valueOf(marker));
+            assertThat(asTenant2)
+                    .as("租户 2 自己能统计到,说明过滤生效而不是查了个空")
+                    .contains(String.valueOf(marker));
+        } finally {
+            jdbc.update("DELETE FROM qa_records WHERE prompt_tokens = ?", (int) marker);
+            jdbc.update("DELETE FROM users WHERE username LIKE 'iso_%'");
+        }
+    }
 }

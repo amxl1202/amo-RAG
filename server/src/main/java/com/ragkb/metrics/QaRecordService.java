@@ -41,8 +41,8 @@ public class QaRecordService {
      * @param question 问题原文(用于事后看"哪些问题答得差")
      * @param answer   编排层的完整结果,含生成与自检两侧的 token
      */
-    public void recordAsync(String question, QaAnswer answer) {
-        QaRecordEntity entity = toEntity(question, answer);
+    public void recordAsync(String question, QaAnswer answer, long tenantId) {
+        QaRecordEntity entity = toEntity(question, answer, tenantId);
         try {
             executor.submit(() -> {
                 try {
@@ -57,7 +57,7 @@ public class QaRecordService {
         }
     }
 
-    private static QaRecordEntity toEntity(String question, QaAnswer answer) {
+    private static QaRecordEntity toEntity(String question, QaAnswer answer, long tenantId) {
         QaRecordEntity entity = new QaRecordEntity();
         entity.setQuestion(question);
         entity.setStatus(answer.status().name());
@@ -70,6 +70,7 @@ public class QaRecordService {
         entity.setAnswerMs((int) Math.min(Integer.MAX_VALUE, answer.answerMillis()));
         entity.setCitationCount(answer.citations().size());
         entity.setModel(answer.model());
+        entity.setTenantId(tenantId);
         entity.setCreatedAt(LocalDateTime.now());
         return entity;
     }

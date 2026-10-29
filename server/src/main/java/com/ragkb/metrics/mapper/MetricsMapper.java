@@ -15,6 +15,11 @@ import org.apache.ibatis.annotations.Select;
  *
  * <h2>为什么用 count(*) FILTER 而不是多次查</h2>
  * 一次扫描出全部计数,避免同一时间段被重复扫三遍。
+ *
+ * <h2>为什么要 tenant_id 条件</h2>
+ * 缺了它,{@code /api/metrics/summary} 会返回<b>全平台</b>的题量、拒答率与成本 ——
+ * 任何登录用户都能据此推断别家租户的用量。聚合结果的泄漏不像明细那么扎眼,
+ * 但一样是泄漏,而且更难在后知后觉时补救(没有明细可回溯是谁看了什么)。
  */
 @Mapper
 public interface MetricsMapper {
@@ -34,7 +39,8 @@ public interface MetricsMapper {
                    coalesce(sum(check_completion_tokens), 0)                      AS check_completion_tokens,
                    coalesce(avg(citation_count), 0)                               AS avg_citations
               FROM qa_records
-             WHERE created_at >= now() - make_interval(days => #{days})
+             WHERE tenant_id = #{tenantId}
+               AND created_at >= now() - make_interval(days => #{days})
             """)
-    MetricsRow summarize(@Param("days") int days);
+    MetricsRow summarize(@Param("tenantId") long tenantId, @Param("days") int days);
 }

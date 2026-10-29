@@ -117,7 +117,7 @@ public class DocumentService {
                     sha256.substring(0, 8));
             // 解析与切片交给后台:上传请求不该等它跑完。
             // 状态推进(UPLOADED → PARSING → CHUNKED / FAILED)由 IngestService 负责。
-            ingestTrigger.trigger(entity.getId());
+            ingestTrigger.trigger(entity.getId(), tenantId);
             return entity;
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JVM 缺少 SHA-256 实现", e);

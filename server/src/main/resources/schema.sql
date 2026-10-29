@@ -155,3 +155,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_documents_tenant_sha256 ON documents (tenan
 
 -- 检索按 tenant 过滤,列表按 tenant + 时间排序,都吃这个索引
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_created ON documents (tenant_id, created_at DESC);
+
+-- 成本画像补租户维度
+-- 为什么现在加:表还年轻(几十行),ALTER + 默认值 1 的代价几乎为零。
+-- 更重要的原因不是"将来要按租户看成本",而是 /api/metrics/summary 现在对任何登录用户
+-- 返回全局数字 —— 多租户上线后 B 能看到 A 的题量与成本,那是聚合层面的泄漏。
+ALTER TABLE qa_records ADD COLUMN IF NOT EXISTS tenant_id BIGINT NOT NULL DEFAULT 1;
+
+CREATE INDEX IF NOT EXISTS idx_qa_records_tenant_created ON qa_records (tenant_id, created_at DESC);
