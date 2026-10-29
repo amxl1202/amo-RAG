@@ -73,6 +73,10 @@ public final class RetrievalComparison {
         List<Config> configs = new ArrayList<>();
         configs.add(new Config("ILIKE", (q, limit) -> contents(ilike.search(q, limit, EVAL_TENANT))));
         configs.add(new Config("TRGM", (q, limit) -> contents(trgm.search(q, limit, EVAL_TENANT))));
+        // 中文二元组通道:与 TRGM(三元组相似度)对照,量化"没有中文分词"的代价
+        com.ragkb.retrieval.JdbcBigramRetriever bigram =
+                new com.ragkb.retrieval.JdbcBigramRetriever(jdbc);
+        configs.add(new Config("BIGRAM", (q, limit) -> contents(bigram.search(q, limit, EVAL_TENANT))));
         // 查询改写只喂关键词通道:向量通道本来就擅长"换个说法",再改是白花钱
         com.ragkb.generation.ChatModel chatModel = chatModel(dotEnv);
         if (vectorReady && chatModel != null) {
