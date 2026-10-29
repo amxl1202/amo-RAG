@@ -311,7 +311,8 @@ export const api = {
     method: 'POST',
     body: { username, password },
   }),
-  listDocuments: () => request('/api/documents'),
+  // 接口改成分页信封({items,total,page,size}),这里取 items —— 前端页面本身不用改
+  listDocuments: () => request('/api/documents?size=200').then((page) => page.items || []),
   upload: (file) => {
     const form = new FormData()
     form.append('file', file)

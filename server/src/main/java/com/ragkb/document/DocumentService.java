@@ -150,11 +150,30 @@ public class DocumentService {
         return entity;
     }
 
-    /** 列表也只返回本租户的文档。 */
-    public java.util.List<DocumentEntity> list(long tenantId) {
-        return documentMapper.selectList(new LambdaQueryWrapper<DocumentEntity>()
-                .eq(DocumentEntity::getTenantId, tenantId)
-                .orderByDesc(DocumentEntity::getCreatedAt));
+    /**
+     * 分页列出本租户的文档。
+     *
+     * <p>为什么不再"一次返回全部":文档攒到几百条时,响应体里每条还带着 64 字符的 sha256,
+     * 一次就是几十 KB,而前端只需要当前页。分页参数在 {@link com.ragkb.common.PageResult}
+     * 里收敛过范围,避免 size 被传成天文数字。
+     *
+     * @param status 可选的状态过滤(如只看 FAILED);为空表示不过滤
+     */
+    public com.ragkb.common.PageResult<DocumentEntity> list(long tenantId, int page, int size, String status) {
+        int safePage = com.ragkb.common.PageResult.normalizePage(page);
+        int safeSize = com.ragkb.common.PageResult.normalizeSize(size);
+        LambdaQueryWrapper<DocumentEntity> condition = new LambdaQueryWrapper<DocumentEntity>()
+                .eq(DocumentEntity::getTenantId, tenantId);
+        if (status != null && !status.isBlank()) {
+            condition.eq(DocumentEntity::getStatus, status.trim().toUpperCase(java.util.Locale.ROOT));
+        }
+        long total = documentMapper.selectCount(condition);
+        java.util.List<DocumentEntity> items = documentMapper.selectList(condition
+                // 显式拼 limit/offset:项目没有装配分页插件,多引一个拦截器只为这一处不值当;
+                // 两个值都已在上面收敛成受控整数,不存在注入面
+                .orderByDesc(DocumentEntity::getCreatedAt)
+                .last("LIMIT " + safeSize + " OFFSET " + (long) (safePage - 1) * safeSize));
+        return new com.ragkb.common.PageResult<>(items, total, safePage, safeSize);
     }
 
     private DocumentEntity findBySha256(String sha256, long tenantId) {

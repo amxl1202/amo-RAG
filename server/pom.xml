@@ -24,7 +24,6 @@
         <pdfbox.version>2.0.32</pdfbox.version>
         <poi.version>5.2.5</poi.version>
         <jjwt.version>0.12.6</jjwt.version>
-        <pgvector.version>0.1.6</pgvector.version>
         <jtokkit.version>1.1.0</jtokkit.version>
     </properties>
 
@@ -55,18 +54,8 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
-        <dependency>
-            <groupId>com.pgvector</groupId>
-            <artifactId>pgvector</artifactId>
-            <version>${pgvector.version}</version>
-        </dependency>
 
         <!-- .env 支持:让密钥留在环境文件而不进代码 -->
-        <dependency>
-            <groupId>me.paulschwarz</groupId>
-            <artifactId>spring-dotenv</artifactId>
-            <version>4.0.0</version>
-        </dependency>
 
         <!-- 文档解析 -->
         <dependency>

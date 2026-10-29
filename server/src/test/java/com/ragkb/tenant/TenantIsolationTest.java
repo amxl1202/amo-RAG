@@ -198,4 +198,25 @@ class TenantIsolationTest {
         }
     }
 
+    @Test
+    @DisplayName("列表分页:返回信封且 total 是过滤后的总数")
+    void listIsPaged() throws Exception {
+        String sha = "tenant-iso-page-" + System.nanoTime();
+        try {
+            insertDocument(sha, 2L);
+            String token = tokenFor("iso_d_" + System.nanoTime(), 1L);
+
+            HttpResponse<String> response = get("/api/documents?page=1&size=1", token);
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body())
+                    .as("分页信封必须带 total,否则前端画不出页码")
+                    .contains("\"total\"")
+                    .contains("\"items\"")
+                    .contains("\"page\"");
+            assertThat(response.body()).doesNotContain(sha);
+        } finally {
+            cleanUp(sha);
+        }
+    }
 }

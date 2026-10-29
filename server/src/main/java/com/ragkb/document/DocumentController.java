@@ -65,12 +65,22 @@ public class DocumentController {
         return ApiResponse.ok(vectorizeService.vectorize(id));
     }
 
+    /**
+     * 文档列表(分页)。
+     *
+     * <p>响应从"裸数组"改成 {@code {items,total,page,size}} —— 前端要知道总数才能画页码。
+     * 默认 size=50,不传参数时行为与"返回前 50 条"一致,不会把整个库倒出来。
+     */
     @GetMapping
-    public ApiResponse<List<DocumentView>> list(@AuthenticationPrincipal AuthPrincipal principal) {
-        // 原来这里直接用了 mapper(留了 FIXME)。加租户过滤正好是把它收回 service 的时机:
-        // "哪些文档可见"是业务规则,不该散落在 controller 里
-        return ApiResponse.ok(documentService.list(principal.tenantId()).stream()
-                .map(DocumentView::from)
-                .toList());
+    public ApiResponse<com.ragkb.common.PageResult<DocumentView>> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String status,
+            @AuthenticationPrincipal AuthPrincipal principal) {
+        com.ragkb.common.PageResult<DocumentEntity> result =
+                documentService.list(principal.tenantId(), page, size, status);
+        return ApiResponse.ok(new com.ragkb.common.PageResult<>(
+                result.items().stream().map(DocumentView::from).toList(),
+                result.total(), result.page(), result.size()));
     }
 }
