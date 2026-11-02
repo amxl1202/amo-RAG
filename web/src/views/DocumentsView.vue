@@ -3,43 +3,60 @@
  * 文档管理页。
  *
  * 行为要点(不能丢):
- * - 上传走统一 API 层(自定义 http-request),才能自动带令牌与统一错误格式;
+ * - 上传走统一 API 层(自定义 http-request),才能自动带令牌与统一的错误格式;
  * - 上传后不会自动向量化,必须手动点"向量化"(按 token 计费,有意为之);
- * - 状态文案:CHUNKED 只能叫"已切片(未向量化)",不能叫"就绪" ——
- *   后端状态机还没推 READY,写成"就绪"会让人误以为已可检索;
  * - 向量化失败(常见是没配 Key 或额度)用弹窗完整展示服务端说明。
+ *
+ * 分页与状态机(改进清单 1.2 / 1.4):
+ * - 接口是分页信封 {items,total,page,size},total 从信封读,别再用本地 length;
+ * - 状态机已补齐:UPLOADED → PARSING → CHUNKED → READY,失败为 FAILED。
+ *   READY 由 /vectorize 成功后写入(见 VectorizeService),PARSING 是切片过程中间态。
+ *   EMBEDDING 不存在 —— /vectorize 是同步的,没有"向量化中"这个状态;
+ * - 存在非终态文档(UPLOADED/PARSING)时每 3 秒轮询当前页,状态会自己往前走(改进清单 2.1)。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 
+const route = useRoute()
+const router = useRouter()
+
 const documents = ref([])
+const total = ref(0)
 const loading = ref(false)
 const uploading = ref(false)
 const busyId = ref(null)
+
+// 分页/筛选状态持久化到 route.query:刷新后不跳回第 1 页(改进清单 1.2 第 3 点)
+const page = ref(Number(route.query.page) || 1)
+const size = ref(Number(route.query.size) || 20)
+const statusFilter = ref(String(route.query.status || ''))
 
 const STATUS = {
   UPLOADED: { text: '已上传，等待切片', type: 'info' },
   PARSING: { text: '解析中', type: 'warning' },
   CHUNKED: { text: '已切片（未向量化）', type: 'warning' },
-  // READY / EMBEDDING 后端还没开始写(已登记的缺口),先映射好文案,
-  // 等后端把状态机补齐时前端不需要跟着改一次
-  EMBEDDING: { text: '向量化中', type: 'warning' },
   READY: { text: '可检索', type: 'success' },
   FAILED: { text: '失败', type: 'danger' },
 }
+
+// 筛选选项:PARSING 是秒级中间态,单独筛它没有意义,不放进去
+const FILTER_OPTIONS = ['UPLOADED', 'CHUNKED', 'READY', 'FAILED']
 
 function statusOf(status) {
   return STATUS[status] || { text: status, type: 'info' }
 }
 
-const stats = computed(() => {
-  const total = documents.value.length
-  const chunked = documents.value.filter((d) => d.status === 'CHUNKED').length
-  const failed = documents.value.filter((d) => d.status === 'FAILED').length
-  const totalSize = documents.value.reduce((sum, d) => sum + (d.fileSize || 0), 0)
-  return { total, chunked, failed, totalSize }
-})
+// 统计条基于当前页:分页后本地只剩当前页,拿它算全量聚合是错的(后端暂无聚合接口,
+// 改进清单 1.2 给的两个选项里选了"注明当前页"这个,不动后端)。
+// 文档总数用信封里的 total,是真实全量;其余三项标注"当前页"
+const stats = computed(() => ({
+  total: total.value,
+  chunked: documents.value.filter((d) => d.status === 'CHUNKED').length,
+  failed: documents.value.filter((d) => d.status === 'FAILED').length,
+  totalSize: documents.value.reduce((sum, d) => sum + (d.fileSize || 0), 0),
+}))
 
 function humanSize(bytes) {
   if (!bytes) return '-'
@@ -53,15 +70,71 @@ function humanTime(value) {
   return String(value).replace('T', ' ').slice(0, 19)
 }
 
-async function refresh() {
-  loading.value = true
+async function refresh(withLoading = true) {
+  loading.value = withLoading
   try {
-    documents.value = await api.listDocuments()
+    const data = await api.listDocuments({
+      page: page.value,
+      size: size.value,
+      status: statusFilter.value || undefined,
+    })
+    documents.value = data.items || []
+    total.value = data.total ?? documents.value.length
   } catch (e) {
     ElMessage.error(e.message)
   } finally {
     loading.value = false
   }
+}
+
+// ── 轮询(改进清单 2.1):存在 UPLOADED/PARSING 时每 3 秒拉一次当前页 ──
+// CHUNKED 不放进待轮询集合:/vectorize 是手动同步操作,CHUNKED 不会自己变,
+// 把它算进去轮询永远不会停
+const PENDING_STATUSES = ['UPLOADED', 'PARSING']
+let pollTimer = null
+
+watch(
+  () => documents.value.some((d) => PENDING_STATUSES.includes(d.status)),
+  (pending) => {
+    clearInterval(pollTimer)
+    if (pending) {
+      pollTimer = setInterval(() => refresh(false), 3000)
+    }
+  },
+)
+
+onUnmounted(() => clearInterval(pollTimer))
+
+// ── 分页/筛选联动:状态同步到 route.query ──
+function syncQuery() {
+  router.replace({
+    query: {
+      ...route.query,
+      page: page.value,
+      size: size.value,
+      status: statusFilter.value || undefined,
+    },
+  })
+}
+
+function onPageChange(p) {
+  page.value = p
+  syncQuery()
+  refresh()
+}
+
+function onSizeChange(s) {
+  size.value = s
+  page.value = 1
+  syncQuery()
+  refresh()
+}
+
+function onFilterChange(v) {
+  statusFilter.value = v
+  page.value = 1
+  syncQuery()
+  refresh()
 }
 
 /** 自定义上传:走统一 API 层,才能自动带上令牌与统一的错误格式。 */
@@ -70,6 +143,11 @@ async function doUpload({ file }) {
   try {
     await api.upload(file)
     ElMessage.success('上传成功，后台正在解析与切片')
+    // 回第 1 页让新文档立刻可见(轮询会接手后续状态推进)。
+    // 必须同步 route.query:否则地址栏还停在第 3 页,刷新一下又跳回去,
+    // 用户会以为"上传的文档丢了"
+    page.value = 1
+    syncQuery()
     await refresh()
   } catch (e) {
     ElMessage.error(e.message)
@@ -118,7 +196,7 @@ onMounted(refresh)
           上传后自动解析并切片；切片必须再向量化才能被语义检索到。重复上传同一份文件会被去重（按内容摘要）。
         </p>
       </div>
-      <el-button text :loading="loading" class="docs-refresh" @click="refresh">
+      <el-button text :loading="loading" class="docs-refresh" @click="refresh()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
         </svg>
@@ -126,7 +204,7 @@ onMounted(refresh)
       </el-button>
     </div>
 
-    <!-- ── 统计条 ── -->
+    <!-- ── 统计条(除总数外均为当前页口径) ── -->
     <div class="stat-bar">
       <div class="stat-card">
         <span class="stat-card__value">{{ stats.total }}</span>
@@ -134,15 +212,15 @@ onMounted(refresh)
       </div>
       <div class="stat-card stat-card--accent">
         <span class="stat-card__value">{{ stats.chunked }}</span>
-        <span class="stat-card__label">已切片</span>
+        <span class="stat-card__label">已切片 · 当前页</span>
       </div>
       <div class="stat-card" :class="{ 'stat-card--danger': stats.failed > 0 }">
         <span class="stat-card__value">{{ stats.failed }}</span>
-        <span class="stat-card__label">失败</span>
+        <span class="stat-card__label">失败 · 当前页</span>
       </div>
       <div class="stat-card">
         <span class="stat-card__value">{{ humanSize(stats.totalSize) }}</span>
-        <span class="stat-card__label">总大小</span>
+        <span class="stat-card__label">总大小 · 当前页</span>
       </div>
     </div>
 
@@ -174,7 +252,22 @@ onMounted(refresh)
     <!-- ── 文档表格 ── -->
     <div class="card table-card">
       <div class="table-head">
-        <span class="table-head__count">共 {{ documents.length }} 份文档</span>
+        <span class="table-head__count">共 {{ total }} 份文档</span>
+        <el-select
+          :model-value="statusFilter"
+          class="status-filter"
+          placeholder="全部状态"
+          clearable
+          size="small"
+          @update:model-value="onFilterChange"
+        >
+          <el-option
+            v-for="opt in FILTER_OPTIONS"
+            :key="opt"
+            :value="opt"
+            :label="STATUS[opt].text"
+          />
+        </el-select>
       </div>
       <div class="table-scroll">
         <el-table v-loading="loading" :data="documents" style="width: 100%">
@@ -232,10 +325,23 @@ onMounted(refresh)
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H7C5.9 2 5 2.9 5 4v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V7l-5-5z" />
               </svg>
-              <p>还没有文档。先上传一份，再去问答页提问。</p>
+              <p>{{ statusFilter ? '这个状态下没有文档。' : '还没有文档。先上传一份，再去问答页提问。' }}</p>
             </div>
           </template>
         </el-table>
+      </div>
+      <!-- 分页:total 来自后端信封,不是本地 length -->
+      <div class="table-foot">
+        <el-pagination
+          :current-page="page"
+          :page-size="size"
+          :total="total"
+          :page-sizes="[20, 50, 100]"
+          layout="prev, pager, next, sizes, total"
+          background
+          @current-change="onPageChange"
+          @size-change="onSizeChange"
+        />
       </div>
     </div>
   </div>
@@ -397,6 +503,7 @@ onMounted(refresh)
 .table-head {
   display: flex;
   align-items: center;
+  gap: 12px;
   padding: 14px 18px 10px;
 }
 
@@ -404,6 +511,11 @@ onMounted(refresh)
   color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+.status-filter {
+  margin-left: auto;
+  width: 170px;
 }
 
 .table-scroll {
@@ -523,6 +635,13 @@ onMounted(refresh)
   font-size: 0.82rem;
 }
 
+/* 分页条 */
+.table-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px 14px;
+}
+
 /* ── 响应式 ── */
 @media (max-width: 768px) {
   .stat-bar {
@@ -531,6 +650,10 @@ onMounted(refresh)
 
   .docs-head {
     flex-direction: column;
+  }
+
+  .table-foot {
+    justify-content: center;
   }
 }
 </style>

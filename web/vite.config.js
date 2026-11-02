@@ -10,6 +10,18 @@ import vue from '@vitejs/plugin-vue'
  */
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    rollupOptions: {
+      output: {
+        // 把大而稳定的依赖拆成独立 chunk:业务代码改一次不会让用户的
+        // element-plus 缓存跟着失效;反之外部库升级也不影响业务包
+        manualChunks: {
+          'element-plus': ['element-plus'],
+          markdown: ['marked', 'dompurify'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

@@ -45,8 +45,10 @@ DOCS=$(curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/documents")
 echo "$DOCS" | python -c "
 import sys, json
 d = json.load(sys.stdin)
-rows = d.get('data') or []
-print('  文档数 %d' % len(rows))
+# 列表接口是分页信封 {items,total,page,size} —— 旧契约直接是数组,信封上线后这里要跟着改
+page = d.get('data') or {}
+rows = page.get('items') or []
+print('  文档数 %s（信封 total=%s, page=%s, size=%s）' % (len(rows), page.get('total'), page.get('page'), page.get('size')))
 for r in rows:
     print('   - %-28s %s' % (r['originalName'], r['status']))
 if not rows:

@@ -11,8 +11,28 @@
  * 换到内存存储可以让 XSS 读不到,但每次刷新都要重新登录,对演示形态不划算。
  */
 
+import { ref } from 'vue'
+
 const TOKEN_KEY = 'amo-rag.token'
 const USER_KEY = 'amo-rag.user'
+
+/**
+ * 当前用户做成 ref(review N13)。
+ *
+ * 之前 currentUser() 直接读 localStorage —— 不是响应式源,computed 不会因登录/登出重算,
+ * 表现是"A 退出、B 登录,顶栏还显示 A"。现在 saveSession/clearSession 同步写这个 ref,
+ * 读它的 computed 就自动跟随登录状态。不要用 watch(route) 兜底 —— 那只在路由变化时刷新,
+ * 同一页面内切换账号仍然错。
+ */
+const currentUserRef = ref(readUserFromStorage())
+
+function readUserFromStorage() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -34,21 +54,19 @@ export function getToken() {
 }
 
 export function currentUser() {
-  try {
-    return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
-  } catch {
-    return null
-  }
+  return currentUserRef.value
 }
 
 export function saveSession(payload) {
   localStorage.setItem(TOKEN_KEY, payload.token)
   localStorage.setItem(USER_KEY, JSON.stringify({ username: payload.username, role: payload.role }))
+  currentUserRef.value = { username: payload.username, role: payload.role }
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  currentUserRef.value = null
 }
 
 /**
@@ -150,9 +168,9 @@ async function request(path, { method = 'GET', body, form } = {}) {
  *    访问令牌过期(401)时先静默刷新再重发,不能直接把人踢去登录页。
  *
  * @param {string} question
- * @param {{onDelta?:Function, onFinal?:Function}} handlers
+ * @param {{onDelta?:Function, onFinal?:Function, onReconnecting?:Function}} handlers
  */
-export async function askStream(question, { onDelta, onFinal } = {}) {
+export async function askStream(question, { onDelta, onFinal, onReconnecting } = {}) {
   const state = { streamId: null, lastEventId: 0, final: null }
 
   const dispatch = (eventName, rawData, eventId) => {
@@ -245,6 +263,9 @@ export async function askStream(question, { onDelta, onFinal } = {}) {
     if (!state.streamId || state.final) {
       throw e
     }
+    // 断线进入续传(review 2.4):光标停住几秒又继续,用户会以为卡了,
+    // 界面需要在这里显示"重连中…"。onDelta 照常送增量,final 到了自然恢复
+    onReconnecting?.()
     await resume(state, dispatch)
   }
 
@@ -311,8 +332,15 @@ export const api = {
     method: 'POST',
     body: { username, password },
   }),
-  // 接口改成分页信封({items,total,page,size}),这里取 items —— 前端页面本身不用改
-  listDocuments: () => request('/api/documents?size=200').then((page) => page.items || []),
+  listDocuments: ({ page = 1, size = 20, status } = {}) => {
+    // 接口是分页信封 {items,total,page,size} —— 这里返回整个信封,不要在 api 层拆 .items:
+    // total 只有信封上有,视图层的分页器要靠它;拆了就会退化成"永远只有第一页"
+    const params = new URLSearchParams({ page: String(page), size: String(size) })
+    if (status) {
+      params.set('status', status)
+    }
+    return request(`/api/documents?${params}`)
+  },
   upload: (file) => {
     const form = new FormData()
     form.append('file', file)
@@ -321,6 +349,8 @@ export const api = {
   ingest: (id) => request(`/api/documents/${id}/ingest`, { method: 'POST' }),
   vectorize: (id) => request(`/api/documents/${id}/vectorize`, { method: 'POST' }),
   ask: (question) => request('/api/qa', { method: 'POST', body: { question } }),
+  /** 运行指标聚合:总数/拒答率/两层延迟分位/token 与成本(后端已就绪)。 */
+  metricsSummary: (days = 7) => request(`/api/metrics/summary?days=${days}`),
   logout: () => fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
           .catch(() => null),
   askStream,

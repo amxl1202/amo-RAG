@@ -92,6 +92,8 @@ async function ask(text) {
     html: '',
     citations: [],
     meta: '',
+    reconnecting: false,
+    retryable: true,
   })
   messages.value.push(draft)
   scrollToBottom()
@@ -112,15 +114,24 @@ async function ask(text) {
           meta: metaText(final),
         })
       },
+      // 断线进入续传(改进清单 2.4):光标停住几秒又继续会被当成"卡了",
+      // 头部加一个"重连中…"标签,final 到了随 STREAMING 状态一起消失
+      onReconnecting: () => {
+        draft.reconnecting = true
+      },
     })
     if (!answer) {
-      throw new Error('连接中断,未收到定稿')
+      throw new Error('连接中断，未收到定稿')
     }
   } catch (e) {
     ElMessage.error(e.message)
+    // 可重试性(改进清单 1.3):后端 error 事件带 retryable 透传;
+    // 前端自己抛的网络错误没有这个字段 —— 网络断了重试是合理的,
+    // 所以默认按可重试处理,只有后端明确 retryable:false 才藏掉重试按钮
     Object.assign(draft, {
       status: 'FAILED',
-      text: `调用失败：${e.message}`,
+      text: e.message,
+      retryable: e.retryable !== false,
       html: '',
       citations: [],
     })
@@ -254,23 +265,26 @@ function pageText(citation) {
           <div class="amsg__body">
             <header class="amsg__head">
               <span class="amsg__role">amo-RAG</span>
-              <span v-if="message.status === 'STREAMING'" class="status-tag status-tag--pending">校验中</span>
+              <span v-if="message.status === 'STREAMING' && message.reconnecting" class="status-tag status-tag--reconnect">重连中…</span>
+              <span v-else-if="message.status === 'STREAMING'" class="status-tag status-tag--pending">校验中</span>
               <span v-else-if="message.status === 'ANSWERED'" class="status-tag status-tag--ok">有依据</span>
               <span v-else-if="message.status === 'REFUSED'" class="status-tag status-tag--refuse">已拒答</span>
               <span v-else class="status-tag status-tag--fail">服务异常</span>
               <span v-if="message.meta" class="amsg__meta">{{ message.meta }}</span>
             </header>
 
-            <!-- 失败:红色卡片 + 重试 -->
+            <!-- 失败:可重试的带重试按钮,不可重试的不给按钮(改进清单 1.3) -->
             <div v-if="message.status === 'FAILED'" class="fail-card">
               <div class="fail-card__head">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
-                <span>请求失败</span>
+                <span>{{ message.retryable === false ? '无法回答' : '请求失败' }}</span>
               </div>
-              <p class="fail-card__text">{{ message.text }}</p>
-              <button class="fail-card__retry" type="button" @click="retry">
+              <p class="fail-card__text">
+                {{ message.retryable === false ? `这个问题暂时无法回答：${message.text}` : message.text }}
+              </p>
+              <button v-if="message.retryable !== false" class="fail-card__retry" type="button" @click="retry">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                 </svg>
@@ -300,7 +314,7 @@ function pageText(citation) {
             <!-- 正常回答:markdown 渲染,点击引用编号打开抽屉 -->
             <!-- 流式阶段先按纯文本渲染:此时还不知道哪几句会被自检删掉,
                  提前套 markdown 只会在定稿时抖动一次;光标是"还在写"的唯一提示 -->
-            <div v-else-if="message.status === 'STREAMING'" class="answer answer-streaming">
+            <div v-else-if="message.status === 'STREAMING'" class="answer answer-streaming" aria-live="polite">
               {{ message.raw }}<span class="caret" />
             </div>
             <div v-else class="answer" @click="onAnswerClick($event, message)" v-html="message.html" />
@@ -741,6 +755,12 @@ function pageText(citation) {
 .status-tag--pending {
   color: #4f46e5;
   background: rgba(79, 70, 229, 0.1);
+}
+
+.status-tag--reconnect {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .status-tag--ok {
